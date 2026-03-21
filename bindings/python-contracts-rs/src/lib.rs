@@ -38,7 +38,6 @@ fn render_inputs(inputs: &[InputSnapshot]) -> String {
 }
 
 #[pyclass(module = "python_contracts_rs._native", frozen)]
-#[derive(Clone)]
 pub struct ContractLocation {
     #[pyo3(get)]
     pub file: String,
@@ -51,6 +50,16 @@ pub struct ContractLocation {
 impl std::fmt::Display for ContractLocation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}:{}:{}", self.file, self.line, self.column)
+    }
+}
+
+impl ContractLocation {
+    fn duplicate(&self) -> Self {
+        Self {
+            file: self.file.clone(),
+            line: self.line,
+            column: self.column,
+        }
     }
 }
 
@@ -74,7 +83,6 @@ impl ContractLocation {
 }
 
 #[pyclass(module = "python_contracts_rs._native", frozen)]
-#[derive(Clone)]
 pub struct InputSnapshot {
     #[pyo3(get)]
     pub name: String,
@@ -89,6 +97,14 @@ impl InputSnapshot {
         match &self.summary {
             Some(summary) => format!("{}: {} ({summary})", self.name, self.type_name),
             None => format!("{}: {}", self.name, self.type_name),
+        }
+    }
+
+    fn duplicate(&self) -> Self {
+        Self {
+            name: self.name.clone(),
+            type_name: self.type_name.clone(),
+            summary: self.summary.clone(),
         }
     }
 }
@@ -118,11 +134,20 @@ impl InputSnapshot {
 }
 
 #[pyclass(module = "python_contracts_rs._native", frozen)]
-#[derive(Clone)]
 pub struct ContractClause {
     kind: String,
     condition: String,
     message: Option<String>,
+}
+
+impl ContractClause {
+    fn duplicate(&self) -> Self {
+        Self {
+            kind: self.kind.clone(),
+            condition: self.condition.clone(),
+            message: self.message.clone(),
+        }
+    }
 }
 
 #[pymethods]
@@ -161,7 +186,6 @@ impl ContractClause {
 }
 
 #[pyclass(module = "python_contracts_rs._native", frozen)]
-#[derive(Clone)]
 pub struct ContractMetadata {
     function: String,
     clauses: Vec<ContractClause>,
@@ -173,7 +197,7 @@ impl ContractMetadata {
     fn new(py: Python<'_>, function: String, clauses: Vec<Py<ContractClause>>) -> PyResult<Self> {
         let clauses = clauses
             .into_iter()
-            .map(|clause| clause.borrow(py).clone())
+            .map(|clause| clause.borrow(py).duplicate())
             .collect();
 
         Ok(Self { function, clauses })
@@ -188,7 +212,7 @@ impl ContractMetadata {
     fn clauses(&self, py: Python<'_>) -> PyResult<Vec<Py<ContractClause>>> {
         self.clauses
             .iter()
-            .cloned()
+            .map(ContractClause::duplicate)
             .map(|clause| Py::new(py, clause))
             .collect()
     }
@@ -203,7 +227,6 @@ impl ContractMetadata {
 }
 
 #[pyclass(module = "python_contracts_rs._native", frozen)]
-#[derive(Clone)]
 pub struct ContractViolation {
     function: String,
     kind: String,
@@ -271,11 +294,11 @@ impl ContractViolation {
         inputs: Option<Vec<Py<InputSnapshot>>>,
         details: Option<String>,
     ) -> PyResult<Self> {
-        let location = location.map(|location| location.borrow(py).clone());
+        let location = location.map(|location| location.borrow(py).duplicate());
         let inputs = inputs
             .unwrap_or_default()
             .into_iter()
-            .map(|input| input.borrow(py).clone())
+            .map(|input| input.borrow(py).duplicate())
             .collect();
 
         Ok(Self {
@@ -317,7 +340,8 @@ impl ContractViolation {
     #[getter]
     fn location(&self, py: Python<'_>) -> PyResult<Option<Py<ContractLocation>>> {
         self.location
-            .clone()
+            .as_ref()
+            .map(ContractLocation::duplicate)
             .map(|location| Py::new(py, location))
             .transpose()
     }
@@ -326,7 +350,7 @@ impl ContractViolation {
     fn inputs(&self, py: Python<'_>) -> PyResult<Vec<Py<InputSnapshot>>> {
         self.inputs
             .iter()
-            .cloned()
+            .map(InputSnapshot::duplicate)
             .map(|input| Py::new(py, input))
             .collect()
     }
