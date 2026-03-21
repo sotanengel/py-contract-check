@@ -1,5 +1,7 @@
 # python-contracts-rs
 
+[![Sponsor](https://img.shields.io/badge/Sponsor-GitHub-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/sotanengel)
+
 This is a design-by-contract library for Python, implemented in Rust.
 
 `python-contracts-rs` は、Python 向けの契約プログラミングライブラリです。公開 API は
