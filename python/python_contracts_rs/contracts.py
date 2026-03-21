@@ -30,7 +30,6 @@ ClassType = TypeVar("ClassType", bound=type[Any])
 class _ClauseSpec:
     kind: str
     condition: str
-    message: Optional[str]
     checker: Optional[Callable[..., bool]]
     native: _native.ContractClause
 
@@ -54,46 +53,41 @@ class ContractViolationError(AssertionError):
 def pre(
     condition_or_predicate: Union[str, Predicate],
     predicate: Optional[Predicate] = None,
-    message: Optional[str] = None,
 ) -> _ClauseSpec:
     condition, checker = _normalize_boolean_clause(condition_or_predicate, predicate)
-    return _clause("precondition", condition, message, checker)
+    return _clause("precondition", condition, checker)
 
 
 def post(
     condition_or_predicate: Union[str, Predicate],
     predicate: Optional[Predicate] = None,
-    message: Optional[str] = None,
 ) -> _ClauseSpec:
     condition, checker = _normalize_boolean_clause(condition_or_predicate, predicate)
-    return _clause("postcondition", condition, message, checker)
+    return _clause("postcondition", condition, checker)
 
 
 def invariant(
     condition_or_predicate: Union[str, Predicate],
     predicate: Optional[Predicate] = None,
-    message: Optional[str] = None,
 ) -> _ClauseSpec:
     condition, checker = _normalize_boolean_clause(condition_or_predicate, predicate)
-    return _clause("invariant", condition, message, checker)
+    return _clause("invariant", condition, checker)
 
 
 def error(
     condition_or_matcher: Union[str, ExceptionMatcher, ExceptionSpec],
     matcher: Optional[Union[ExceptionMatcher, ExceptionSpec]] = None,
-    message: Optional[str] = None,
 ) -> _ClauseSpec:
     if matcher is None and _is_exception_spec(condition_or_matcher):
         exceptions = _normalize_exceptions(cast(ExceptionSpec, condition_or_matcher))
         condition = " or ".join(exception.__name__ for exception in exceptions)
-        return _clause("error", condition, message, _exception_matcher(exceptions))
+        return _clause("error", condition, _exception_matcher(exceptions))
 
     if matcher is not None and _is_exception_spec(matcher):
         exceptions = _normalize_exceptions(cast(ExceptionSpec, matcher))
         return _clause(
             "error",
             str(condition_or_matcher),
-            message,
             _exception_matcher(exceptions),
         )
 
@@ -102,24 +96,24 @@ def error(
         condition_or_matcher,
         cast(Optional[Callable[..., bool]], callable_matcher),
     )
-    return _clause("error", condition, message, checker)
+    return _clause("error", condition, checker)
 
 
-def raises(*exceptions: Type[Exception], message: Optional[str] = None) -> _ClauseSpec:
+def raises(*exceptions: Type[Exception]) -> _ClauseSpec:
     if not exceptions:
         raise TypeError("raises() には少なくとも1つの例外型が必要です")
 
     normalized = _normalize_exceptions(exceptions)
     condition = " or ".join(exception.__name__ for exception in normalized)
-    return _clause("error", condition, message, _exception_matcher(normalized))
+    return _clause("error", condition, _exception_matcher(normalized))
 
 
-def pure(message: Optional[str] = None) -> _ClauseSpec:
-    return _clause("purity", "pure", message, None)
+def pure() -> _ClauseSpec:
+    return _clause("purity", "pure", None)
 
 
-def panic_free(message: Optional[str] = None) -> _ClauseSpec:
-    return _clause("panic", "panic_free", message, None)
+def panic_free() -> _ClauseSpec:
+    return _clause("panic", "panic_free", None)
 
 
 def contract(*clauses: _ClauseSpec) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
@@ -339,7 +333,6 @@ def clause_to_dict(clause: _native.ContractClause) -> Dict[str, Any]:
     return {
         "kind": clause.kind,
         "condition": clause.condition,
-        "message": clause.message,
     }
 
 
@@ -378,7 +371,6 @@ def violation_to_dict(violation: _native.ContractViolation) -> Dict[str, Any]:
         "function": violation.function,
         "kind": violation.kind,
         "condition": violation.condition,
-        "message": violation.message,
         "details": violation.details,
         "location": location_to_dict(violation.location),
         "inputs": [input_snapshot_to_dict(snapshot) for snapshot in violation.inputs],
@@ -397,7 +389,7 @@ def violation_to_sarif_result(
         "ruleId": _sarif_rule_id(normalized),
         "level": "error",
         "message": {
-            "text": normalized.message or normalized.condition,
+            "text": normalized.condition,
         },
         "properties": {
             "contractKind": normalized.kind,
@@ -433,7 +425,7 @@ def violations_to_sarif(
             "id": _sarif_rule_id(violation),
             "name": violation.kind,
             "shortDescription": {"text": violation.kind},
-            "fullDescription": {"text": violation.message or violation.condition},
+            "fullDescription": {"text": violation.condition},
         }
         for violation in _unique_violations_by_rule(normalized)
     ]
@@ -463,13 +455,10 @@ def violations_to_sarif_json(
 def _clause(
     kind: str,
     condition: str,
-    message: Optional[str],
     checker: Optional[Callable[..., bool]],
 ) -> _ClauseSpec:
-    native = _native.ContractClause(kind, condition, message)
-    return _ClauseSpec(
-        kind=kind, condition=condition, message=message, checker=checker, native=native
-    )
+    native = _native.ContractClause(kind, condition)
+    return _ClauseSpec(kind=kind, condition=condition, checker=checker, native=native)
 
 
 def _require_clause(clause: _ClauseSpec) -> _ClauseSpec:
@@ -775,7 +764,6 @@ def _handle_invocation_exception(
             function_path=function_path,
             kind="error",
             condition=" or ".join(clause.condition for clause in error_contracts),
-            message=_join_messages(error_contracts),
             location=location,
             inputs=inputs,
             details=_exception_details(exc),
@@ -786,7 +774,6 @@ def _handle_invocation_exception(
             function_path=function_path,
             kind="panic",
             condition=panic_contract.condition,
-            message=panic_contract.message,
             location=location,
             inputs=inputs,
             details=_exception_details(exc),
@@ -1102,7 +1089,6 @@ def _check_boolean_clauses(
                 function_path=function_path,
                 kind=clause.kind,
                 condition=clause.condition,
-                message=clause.message,
                 location=location,
                 inputs=inputs,
                 details=f"predicate raised {type(exc).__name__}: {exc}",
@@ -1113,7 +1099,6 @@ def _check_boolean_clauses(
                 function_path=function_path,
                 kind=clause.kind,
                 condition=clause.condition,
-                message=clause.message,
                 location=location,
                 inputs=inputs,
             )
@@ -1144,7 +1129,6 @@ def _matches_error_contract(
                 function_path=function_path,
                 kind="error",
                 condition=clause.condition,
-                message=clause.message,
                 location=location,
                 inputs=inputs,
                 details=f"predicate raised {type(inner_exc).__name__}: {inner_exc}",
@@ -1197,7 +1181,6 @@ def _build_violation_error(
     function_path: str,
     kind: str,
     condition: str,
-    message: Optional[str],
     location: _native.ContractLocation,
     inputs: Sequence[_native.InputSnapshot],
     details: Optional[str] = None,
@@ -1206,7 +1189,6 @@ def _build_violation_error(
         function_path,
         kind,
         condition,
-        message,
         location,
         list(inputs),
         details,
@@ -1237,13 +1219,6 @@ def _unique_violations_by_rule(
 
 def _exception_details(exc: Exception) -> str:
     return f"{type(exc).__name__}: {exc}"
-
-
-def _join_messages(clauses: Sequence[_ClauseSpec]) -> Optional[str]:
-    messages = [clause.message for clause in clauses if clause.message]
-    if not messages:
-        return None
-    return " / ".join(messages)
 
 
 def _is_exception_spec(value: object) -> bool:

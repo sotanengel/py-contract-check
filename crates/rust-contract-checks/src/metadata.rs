@@ -37,23 +37,13 @@ pub struct ContractClause {
     pub kind: ContractKind,
     /// 条件文字列です。
     pub condition: &'static str,
-    /// 任意の説明文です。
-    pub message: Option<&'static str>,
 }
 
 impl ContractClause {
     /// 新しい契約条項を生成します。
     #[must_use]
-    pub const fn new(
-        kind: ContractKind,
-        condition: &'static str,
-        message: Option<&'static str>,
-    ) -> Self {
-        Self {
-            kind,
-            condition,
-            message,
-        }
+    pub const fn new(kind: ContractKind, condition: &'static str) -> Self {
+        Self { kind, condition }
     }
 }
 

@@ -12,7 +12,6 @@ fn structured_log_line() -> String {
         "python_contracts_rs.divide",
         ContractKind::Precondition,
         "divisor != 0",
-        Some("0で割る入力は許可しない"),
         ContractLocation::new("examples/quickstart.py", 4, 1),
         vec![InputSnapshot::described("divisor", "int", "0")],
     )

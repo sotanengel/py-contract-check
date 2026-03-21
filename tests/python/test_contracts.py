@@ -26,22 +26,22 @@ from python_contracts_rs import (
 
 
 @contract(
-    pre("value % 2 == 0", lambda value: value % 2 == 0, "偶数のみ受け付ける"),
-    pure("入力以外の状態に依存しない"),
+    pre("value % 2 == 0", lambda value: value % 2 == 0),
+    pure(),
 )
 def only_even(value: int) -> int:
     return value // 2
 
 
 @contract(
-    post("result > value", lambda result, value: result > value, "戻り値は入力より大きい"),
+    post("result > value", lambda result, value: result > value),
 )
 def broken_increment(value: int) -> int:
     return value
 
 
 @contract(
-    raises(ZeroDivisionError, message="0除算だけを許可する"),
+    raises(ZeroDivisionError),
 )
 def checked_divide(dividend: int, divisor: int) -> int:
     if divisor == 0:
@@ -50,7 +50,7 @@ def checked_divide(dividend: int, divisor: int) -> int:
 
 
 @contract(
-    raises(ZeroDivisionError, message="0除算だけを許可する"),
+    raises(ZeroDivisionError),
 )
 def broken_error(flag: bool) -> int:
     if flag:
@@ -59,7 +59,7 @@ def broken_error(flag: bool) -> int:
 
 
 @contract(
-    panic_free("予期しない例外を契約違反へ変換する"),
+    panic_free(),
 )
 def panic_if_requested(flag: bool) -> int:
     if flag:
@@ -68,8 +68,8 @@ def panic_if_requested(flag: bool) -> int:
 
 
 @contract(
-    pre("value > 0", lambda value: value > 0, "正の値だけを許可する"),
-    post("result == value + 1", lambda result, value: result == value + 1, "結果は入力+1"),
+    pre("value > 0", lambda value: value > 0),
+    post("result == value + 1", lambda result, value: result == value + 1),
 )
 async def async_increment(value: int) -> int:
     await asyncio.sleep(0)
@@ -77,7 +77,7 @@ async def async_increment(value: int) -> int:
 
 
 @contract(
-    raises(ValueError, message="ValueError だけを許可する"),
+    raises(ValueError),
 )
 async def async_broken_error(flag: bool) -> int:
     await asyncio.sleep(0)
@@ -87,8 +87,8 @@ async def async_broken_error(flag: bool) -> int:
 
 
 @contract(
-    pre("start >= 0", lambda start: start >= 0, "開始値は非負"),
-    post("result >= start", lambda result, start: result >= start, "yield 値は開始値以上"),
+    pre("start >= 0", lambda start: start >= 0),
+    post("result >= start", lambda result, start: result >= start),
 )
 async def async_counter(start: int) -> Any:
     for offset in range(2):
@@ -97,7 +97,7 @@ async def async_counter(start: int) -> Any:
 
 
 @contract(
-    raises(ValueError, message="ValueError だけを許可する"),
+    raises(ValueError),
 )
 async def async_counter_with_error(flag: bool) -> Any:
     await asyncio.sleep(0)
@@ -110,7 +110,6 @@ async def async_counter_with_error(flag: bool) -> Any:
     post(
         "result.startswith('ctx:')",
         lambda result: result.startswith("ctx:"),
-        "enter した値は ctx: で始まる",
     ),
 )
 @asynccontextmanager
@@ -123,7 +122,6 @@ async def managed_resource(name: str) -> Any:
     post(
         "result.startswith('ctx:')",
         lambda result: result.startswith("ctx:"),
-        "enter した値は ctx: で始まる",
     ),
 )
 @asynccontextmanager
@@ -137,7 +135,6 @@ async def broken_managed_resource() -> Any:
     post(
         "result.endswith('ok')",
         lambda result: result.endswith("ok"),
-        "enter した値は ok で終わる",
     ),
 )
 async def managed_resource_contract_inside() -> Any:
@@ -150,20 +147,20 @@ class Wallet:
         self.balance = balance
 
     @contract(
-        invariant("self.balance >= 0", lambda self: self.balance >= 0, "残高は常に非負"),
+        invariant("self.balance >= 0", lambda self: self.balance >= 0),
     )
     def debit(self, amount: int) -> None:
         self.balance -= amount
 
 
 @invariant_class(
-    invariant("self.balance >= 0", lambda self: self.balance >= 0, "残高は常に非負"),
+    invariant("self.balance >= 0", lambda self: self.balance >= 0),
 )
 class AutoWallet:
     def __init__(self, balance: int) -> None:
         self.balance = balance
 
-    @contract(pre("amount >= 0", lambda amount: amount >= 0, "金額は非負"))
+    @contract(pre("amount >= 0", lambda amount: amount >= 0))
     def debit(self, amount: int) -> None:
         self.balance -= amount
 
@@ -172,7 +169,7 @@ class AutoWallet:
 
 
 @invariant_class(
-    invariant("self.balance >= 0", lambda self: self.balance >= 0, "残高は常に非負"),
+    invariant("self.balance >= 0", lambda self: self.balance >= 0),
     include_private=True,
 )
 class StrictWallet:
@@ -184,7 +181,7 @@ class StrictWallet:
 
 
 @invariant_class(
-    invariant("self.balance >= 0", lambda self: self.balance >= 0, "残高は常に非負"),
+    invariant("self.balance >= 0", lambda self: self.balance >= 0),
 )
 class AsyncWallet:
     def __init__(self, balance: int) -> None:
@@ -237,7 +234,6 @@ def test_panic_free_wraps_unexpected_exception() -> None:
     violation = exc_info.value.violation
     assert violation.kind == "panic"
     assert violation.condition == "panic_free"
-    assert violation.message == "予期しない例外を契約違反へ変換する"
     assert violation.details == "RuntimeError: boom"
 
 
@@ -336,6 +332,7 @@ def test_violation_serializers_return_json_safe_payload() -> None:
     payload = exc_info.value.to_dict()
     assert payload["kind"] == "precondition"
     assert payload["inputs"][0]["name"] == "value"
+    assert "message" not in payload
     assert '"kind": "precondition"' in exc_info.value.to_json()
     assert violation_to_dict(exc_info.value.violation)["condition"] == "value % 2 == 0"
     assert violation_to_json(exc_info.value.violation).startswith("{")

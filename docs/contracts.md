@@ -12,11 +12,11 @@ from python_contracts_rs import contract, invariant, panic_free, post, pre, rais
 
 
 @contract(
-    pre("value > 0", lambda value: value > 0, "入力は正"),
-    post("result >= value", lambda result, value: result >= value, "戻り値は入力以上"),
-    raises(ValueError, message="定義済みの例外だけを許可する"),
-    invariant("self.balance >= 0", lambda self: self.balance >= 0, "残高は非負"),
-    panic_free("予期しない例外を契約違反へ変換する"),
+    pre("value > 0", lambda value: value > 0),
+    post("result >= value", lambda result, value: result >= value),
+    raises(ValueError),
+    invariant("self.balance >= 0", lambda self: self.balance >= 0),
+    panic_free(),
 )
 def example(value: int) -> int:
     return value
@@ -72,7 +72,6 @@ def example(value: int) -> int:
 - `kind`
 - `function`
 - `condition`
-- `message`
 - `details`
 - `location`
 - `inputs`

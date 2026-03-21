@@ -31,14 +31,13 @@ from python_contracts_rs import (
 
 
 @contract(
-    pre("divisor != 0", lambda divisor: divisor != 0, "0で割る入力は許可しない"),
+    pre("divisor != 0", lambda divisor: divisor != 0),
     post(
         "result * divisor == dividend",
         lambda result, dividend, divisor: result * divisor == dividend,
-        "戻り値から元の被除数を復元できる",
     ),
-    raises(ZeroDivisionError, message="0除算だけを許可する"),
-    pure("入力以外の状態に依存しない"),
+    raises(ZeroDivisionError),
+    pure(),
 )
 def divide(dividend: int, divisor: int) -> int:
     if divisor == 0:
@@ -47,8 +46,8 @@ def divide(dividend: int, divisor: int) -> int:
 
 
 @contract(
-    pre("value > 0", lambda value: value > 0, "正の値だけを許可する"),
-    post("result == value + 1", lambda result, value: result == value + 1, "結果は入力+1"),
+    pre("value > 0", lambda value: value > 0),
+    post("result == value + 1", lambda result, value: result == value + 1),
 )
 async def async_increment(value: int) -> int:
     await asyncio.sleep(0)
@@ -56,7 +55,7 @@ async def async_increment(value: int) -> int:
 
 
 @invariant_class(
-    invariant("self.balance >= 0", lambda self: self.balance >= 0, "残高は非負"),
+    invariant("self.balance >= 0", lambda self: self.balance >= 0),
 )
 class Wallet:
     def __init__(self, balance: int) -> None:
@@ -80,6 +79,7 @@ assert asyncio.run(async_increment(2)) == 3
 - 契約は sync / async 関数の両方で有効です
 - `PYTHON_CONTRACTS_RS=0` で実行時に無効化できます
 - 契約違反は `ContractViolationError` として送出され、`to_dict()` / `to_json()` で構造化出力できます
+- 条項ごとの補足 `message` は持たず、条件式そのものを仕様として扱います
 
 ## 提供機能
 

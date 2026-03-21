@@ -21,12 +21,12 @@ use syn::{
 ///
 /// ```ignore
 /// #[contract(
-///     pre(x > 0, "入力は正値"),
-///     post(*ret >= x, "戻り値は入力以上"),
-///     error(matches!(err, MyError::BadInput), "許可された失敗のみ"),
-///     invariant(self.balance >= 0, "残高は非負"),
-///     pure("外部状態を読まない"),
-///     panic_free("契約違反以外ではpanicしない")
+///     pre(x > 0),
+///     post(*ret >= x),
+///     error(matches!(err, MyError::BadInput)),
+///     invariant(self.balance >= 0),
+///     pure(),
+///     panic_free()
 /// )]
 /// ```
 #[proc_macro_attribute]
@@ -70,13 +70,12 @@ enum ContractItem {
     Post(ClauseSpec),
     Error(ClauseSpec),
     Invariant(ClauseSpec),
-    Pure(Option<LitStr>),
-    PanicFree(Option<LitStr>),
+    Pure,
+    PanicFree,
 }
 
 struct ClauseSpec {
     expr: Expr,
-    message: Option<LitStr>,
 }
 
 mod keywords {
@@ -112,12 +111,14 @@ impl Parse for ContractItem {
 
         if input.peek(keywords::pure) {
             input.parse::<keywords::pure>()?;
-            return Ok(Self::Pure(parse_marker_message(input)?));
+            parse_marker(input)?;
+            return Ok(Self::Pure);
         }
 
         if input.peek(keywords::panic_free) {
             input.parse::<keywords::panic_free>()?;
-            return Ok(Self::PanicFree(parse_marker_message(input)?));
+            parse_marker(input)?;
+            return Ok(Self::PanicFree);
         }
 
         Err(input.error("未知の契約指定です"))
@@ -128,39 +129,27 @@ fn parse_clause_spec(input: ParseStream<'_>) -> Result<ClauseSpec> {
     let content;
     parenthesized!(content in input);
     let expr = content.parse::<Expr>()?;
-    let message = if content.is_empty() {
-        None
-    } else {
-        content.parse::<Token![,]>()?;
-        Some(content.parse::<LitStr>()?)
-    };
 
     if !content.is_empty() {
-        return Err(content.error("契約指定の末尾に余分なトークンがあります"));
+        return Err(content.error("契約指定には条件式だけを書いてください"));
     }
 
-    Ok(ClauseSpec { expr, message })
+    Ok(ClauseSpec { expr })
 }
 
-fn parse_marker_message(input: ParseStream<'_>) -> Result<Option<LitStr>> {
+fn parse_marker(input: ParseStream<'_>) -> Result<()> {
     if !input.peek(syn::token::Paren) {
-        return Ok(None);
+        return Ok(());
     }
 
     let content;
     parenthesized!(content in input);
 
-    if content.is_empty() {
-        return Ok(None);
-    }
-
-    let message = content.parse::<LitStr>()?;
-
     if !content.is_empty() {
-        return Err(content.error("marker指定には文字列メッセージのみ渡せます"));
+        return Err(content.error("marker指定に引数は渡せません"));
     }
 
-    Ok(Some(message))
+    Ok(())
 }
 
 fn expand_free_function(
@@ -242,9 +231,7 @@ fn expand_function_like(
     let mut error_contracts = Vec::new();
     let mut invariants = Vec::new();
     let mut pure_marker = false;
-    let mut purity_message = None;
     let mut panic_free_marker = false;
-    let mut panic_contract_message = None;
 
     for item in arguments.items {
         match item {
@@ -252,13 +239,11 @@ fn expand_function_like(
             ContractItem::Post(spec) => postconditions.push(spec),
             ContractItem::Error(spec) => error_contracts.push(spec),
             ContractItem::Invariant(spec) => invariants.push(spec),
-            ContractItem::Pure(message) => {
+            ContractItem::Pure => {
                 pure_marker = true;
-                purity_message = message;
             }
-            ContractItem::PanicFree(message) => {
+            ContractItem::PanicFree => {
                 panic_free_marker = true;
-                panic_contract_message = message;
             }
         }
     }
@@ -291,9 +276,7 @@ fn expand_function_like(
         &error_contracts,
         &invariants,
         pure_marker,
-        purity_message.as_ref(),
         panic_free_marker,
-        panic_contract_message.as_ref(),
         &contract_crate,
     );
 
@@ -366,14 +349,12 @@ fn expand_function_like(
         }
     };
     let panic_execution = if panic_free_marker {
-        let panic_message_tokens = option_literal(panic_contract_message.as_ref());
         quote! {
             match ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| #block)) {
                 Ok(value) => value,
                 Err(payload) => {
                     #contract_crate::handle_panic(
                         #function_path,
-                        #panic_message_tokens,
                         #contract_crate::ContractLocation::new(file!(), line!(), column!()),
                         vec![#(#post_inputs),*],
                         payload
@@ -519,7 +500,6 @@ fn clause_checks_with_binding(
         .map(|spec| {
             let expression = &spec.expr;
             let condition_text = condition_literal(expression);
-            let message_tokens = option_literal(spec.message.as_ref());
             quote! {
                 #binding
                 if !(#expression) {
@@ -528,7 +508,6 @@ fn clause_checks_with_binding(
                             #contract_crate::ContractKind::#kind_ident,
                             #function_path,
                             #condition_text,
-                            #message_tokens,
                             #contract_crate::ContractLocation::new(file!(), line!(), column!()),
                             vec![#(#inputs),*]
                         )
@@ -550,7 +529,6 @@ fn result_post_checks(
         .map(|spec| {
             let expression = &spec.expr;
             let condition_text = condition_literal(expression);
-            let message_tokens = option_literal(spec.message.as_ref());
             quote! {
                 if let Ok(ret) = &__contract_result {
                     if !(#expression) {
@@ -559,7 +537,6 @@ fn result_post_checks(
                                 #contract_crate::ContractKind::Postcondition,
                                 #function_path,
                                 #condition_text,
-                                #message_tokens,
                                 #contract_crate::ContractLocation::new(file!(), line!(), column!()),
                                 vec![#(#inputs),*]
                             )
@@ -581,11 +558,6 @@ fn result_error_checks(
         return quote! {};
     }
 
-    let message_literals = clauses
-        .iter()
-        .filter_map(|spec| spec.message.as_ref())
-        .map(LitStr::value)
-        .collect::<Vec<_>>();
     let expression_checks = clauses.iter().map(|spec| {
         let expression = &spec.expr;
         quote! {
@@ -608,16 +580,6 @@ fn result_error_checks(
         ),
         Span::call_site(),
     );
-    let joined_messages = if message_literals.is_empty() {
-        None
-    } else {
-        Some(LitStr::new(
-            &message_literals.join(" / "),
-            Span::call_site(),
-        ))
-    };
-    let message_tokens = option_literal(joined_messages.as_ref());
-
     quote! {
         if let Err(err) = &__contract_result {
             let mut __contract_error_matched = false;
@@ -629,7 +591,6 @@ fn result_error_checks(
                         #contract_crate::ContractKind::ErrorContract,
                         #function_path,
                         #joined_conditions,
-                        #message_tokens,
                         #contract_crate::ContractLocation::new(file!(), line!(), column!()),
                         vec![#(#inputs),*]
                     )
@@ -646,9 +607,7 @@ fn metadata_entries(
     error_contracts: &[ClauseSpec],
     invariants: &[ClauseSpec],
     pure_marker: bool,
-    purity_message: Option<&LitStr>,
     panic_free_marker: bool,
-    panic_contract_message: Option<&LitStr>,
     contract_crate: &proc_macro2::TokenStream,
 ) -> Vec<proc_macro2::TokenStream> {
     let mut entries = Vec::new();
@@ -675,23 +634,19 @@ fn metadata_entries(
     ));
 
     if pure_marker {
-        let message = option_literal(purity_message);
         entries.push(quote! {
             #contract_crate::ContractClause::new(
                 #contract_crate::ContractKind::Purity,
-                "pure",
-                #message
+                "pure"
             )
         });
     }
 
     if panic_free_marker {
-        let message = option_literal(panic_contract_message);
         entries.push(quote! {
             #contract_crate::ContractClause::new(
                 #contract_crate::ContractKind::PanicContract,
-                "panic_free",
-                #message
+                "panic_free"
             )
         });
     }
@@ -700,8 +655,7 @@ fn metadata_entries(
         entries.push(quote! {
             #contract_crate::ContractClause::new(
                 #contract_crate::ContractKind::PanicContract,
-                "panic_free",
-                None
+                "panic_free"
             )
         });
     }
@@ -720,12 +674,10 @@ fn metadata_clause_tokens(
         .iter()
         .map(|spec| {
             let condition = condition_literal(&spec.expr);
-            let message = option_literal(spec.message.as_ref());
             quote! {
                 #contract_crate::ContractClause::new(
                     #contract_crate::ContractKind::#kind_ident,
-                    #condition,
-                    #message
+                    #condition
                 )
             }
         })
@@ -744,11 +696,4 @@ fn normalize_condition_text(raw: String) -> String {
         .replace("! (", "!(")
         .replace(" :: ", "::")
         .replace(" . ", ".")
-}
-
-fn option_literal(value: Option<&LitStr>) -> proc_macro2::TokenStream {
-    match value {
-        Some(value) => quote!(Some(#value)),
-        None => quote!(None),
-    }
 }

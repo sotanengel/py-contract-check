@@ -21,7 +21,6 @@ impl Invariant for Balance {
             "python_contracts_rs.Balance",
             ContractKind::Invariant,
             "self.amount >= 0",
-            Some("残高は負になってはいけない"),
             ContractLocation::new("tests/contracts.rs", 1, 1),
             vec![InputSnapshot::described(
                 "amount",
@@ -38,7 +37,6 @@ fn violation_log_line_contains_expected_fields() {
         "python_contracts_rs.divide",
         ContractKind::Precondition,
         "divisor != 0",
-        Some("0で割る入力は許可しない"),
         ContractLocation::new("tests/python/test_contracts.py", 10, 1),
         vec![InputSnapshot::described("divisor", "int", "0")],
     )
@@ -58,7 +56,6 @@ fn display_includes_inputs() {
         "python_contracts_rs.only_even",
         ContractKind::Precondition,
         "value % 2 == 0",
-        Some("偶数のみ受け付ける"),
         ContractLocation::new("tests/python/test_contracts.py", 20, 1),
         vec![InputSnapshot::described("value", "int", "3")],
     );

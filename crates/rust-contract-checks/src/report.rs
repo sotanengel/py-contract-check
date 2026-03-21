@@ -84,8 +84,6 @@ pub struct ContractViolation {
     pub kind: ContractKind,
     /// 違反した条件文字列です。
     pub condition: &'static str,
-    /// 任意の補足メッセージです。
-    pub message: Option<&'static str>,
     /// 実行時にしか得られない補足情報です。
     pub details: Option<String>,
     /// 発生位置です。
@@ -101,7 +99,6 @@ impl ContractViolation {
         function: &'static str,
         kind: ContractKind,
         condition: &'static str,
-        message: Option<&'static str>,
         location: ContractLocation,
         inputs: Vec<InputSnapshot>,
     ) -> Self {
@@ -109,7 +106,6 @@ impl ContractViolation {
             function,
             kind,
             condition,
-            message,
             details: None,
             location,
             inputs,
@@ -126,7 +122,6 @@ impl ContractViolation {
     /// 監査やCIログに流しやすい単一行フォーマットを返します。
     #[must_use]
     pub fn to_log_line(&self) -> String {
-        let message = self.message.unwrap_or("-");
         let details = self.details.as_deref().unwrap_or("-");
         let inputs = if self.inputs.is_empty() {
             String::from("-")
@@ -139,11 +134,10 @@ impl ContractViolation {
         };
 
         format!(
-            "contract_violation|kind={}|function={}|condition={}|message={}|details={}|location={}|inputs={}",
+            "contract_violation|kind={}|function={}|condition={}|details={}|location={}|inputs={}",
             self.kind.as_str(),
             self.function,
             self.condition,
-            message,
             details,
             self.location,
             inputs
@@ -155,10 +149,6 @@ impl Display for ContractViolation {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "契約違反 [{}] {}", self.kind.as_str(), self.function)?;
         writeln!(f, "条件: {}", self.condition)?;
-
-        if let Some(message) = self.message {
-            writeln!(f, "説明: {message}")?;
-        }
 
         if let Some(details) = &self.details {
             writeln!(f, "詳細: {details}")?;

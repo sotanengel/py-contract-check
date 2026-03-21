@@ -13,14 +13,13 @@ from python_contracts_rs import (
 
 
 @contract(
-    pre("divisor != 0", lambda divisor: divisor != 0, "0で割る入力は許可しない"),
+    pre("divisor != 0", lambda divisor: divisor != 0),
     post(
         "result * divisor == dividend",
         lambda result, dividend, divisor: result * divisor == dividend,
-        "戻り値から元の被除数を復元できる",
     ),
-    raises(ZeroDivisionError, message="0除算だけを許可する"),
-    pure("入力以外の状態に依存しない"),
+    raises(ZeroDivisionError),
+    pure(),
 )
 def divide(dividend: int, divisor: int) -> int:
     if divisor == 0:
@@ -29,8 +28,8 @@ def divide(dividend: int, divisor: int) -> int:
 
 
 @contract(
-    pre("value > 0", lambda value: value > 0, "正の値だけを許可する"),
-    post("result == value + 1", lambda result, value: result == value + 1, "結果は入力+1"),
+    pre("value > 0", lambda value: value > 0),
+    post("result == value + 1", lambda result, value: result == value + 1),
 )
 async def async_increment(value: int) -> int:
     await asyncio.sleep(0)
@@ -38,14 +37,14 @@ async def async_increment(value: int) -> int:
 
 
 @invariant_class(
-    invariant("self.remaining >= 0", lambda self: self.remaining >= 0, "残高は常に0以上"),
+    invariant("self.remaining >= 0", lambda self: self.remaining >= 0),
 )
 class Budget:
     def __init__(self, remaining: int) -> None:
         self.remaining = remaining
 
     @contract(
-        raises(ValueError, message="定義済みの支出エラーだけを許可する"),
+        raises(ValueError),
     )
     def spend(self, amount: int) -> None:
         if amount < 0:

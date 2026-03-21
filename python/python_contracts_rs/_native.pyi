@@ -17,8 +17,7 @@ class InputSnapshot:
 class ContractClause:
     kind: str
     condition: str
-    message: Optional[str]
-    def __init__(self, kind: str, condition: str, message: Optional[str] = ...) -> None: ...
+    def __init__(self, kind: str, condition: str) -> None: ...
 
 class ContractMetadata:
     function: str
@@ -29,7 +28,6 @@ class ContractViolation:
     function: str
     kind: str
     condition: str
-    message: Optional[str]
     details: Optional[str]
     location: Optional[ContractLocation]
     inputs: list[InputSnapshot]
@@ -38,7 +36,6 @@ class ContractViolation:
         function: str,
         kind: str,
         condition: str,
-        message: Optional[str] = ...,
         location: Optional[ContractLocation] = ...,
         inputs: Optional[Sequence[InputSnapshot]] = ...,
         details: Optional[str] = ...,

@@ -137,7 +137,6 @@ impl InputSnapshot {
 pub struct ContractClause {
     kind: String,
     condition: String,
-    message: Option<String>,
 }
 
 impl ContractClause {
@@ -145,7 +144,6 @@ impl ContractClause {
         Self {
             kind: self.kind.clone(),
             condition: self.condition.clone(),
-            message: self.message.clone(),
         }
     }
 }
@@ -153,12 +151,10 @@ impl ContractClause {
 #[pymethods]
 impl ContractClause {
     #[new]
-    #[pyo3(signature = (kind, condition, message=None))]
-    fn new(kind: String, condition: String, message: Option<String>) -> PyResult<Self> {
+    fn new(kind: String, condition: String) -> PyResult<Self> {
         Ok(Self {
             kind: normalize_kind(&kind)?,
             condition,
-            message,
         })
     }
 
@@ -172,15 +168,10 @@ impl ContractClause {
         self.condition.clone()
     }
 
-    #[getter]
-    fn message(&self) -> Option<String> {
-        self.message.clone()
-    }
-
     fn __repr__(&self) -> String {
         format!(
-            "ContractClause(kind={:?}, condition={:?}, message={:?})",
-            self.kind, self.condition, self.message
+            "ContractClause(kind={:?}, condition={:?})",
+            self.kind, self.condition
         )
     }
 }
@@ -231,7 +222,6 @@ pub struct ContractViolation {
     function: String,
     kind: String,
     condition: String,
-    message: Option<String>,
     details: Option<String>,
     location: Option<ContractLocation>,
     inputs: Vec<InputSnapshot>,
@@ -239,15 +229,13 @@ pub struct ContractViolation {
 
 impl ContractViolation {
     fn log_line(&self) -> String {
-        let message = self.message.as_deref().unwrap_or("-");
         let details = self.details.as_deref().unwrap_or("-");
 
         format!(
-            "contract_violation|kind={}|function={}|condition={}|message={}|details={}|location={}|inputs={}",
+            "contract_violation|kind={}|function={}|condition={}|details={}|location={}|inputs={}",
             self.kind,
             self.function,
             self.condition,
-            message,
             details,
             render_location(&self.location),
             render_inputs(&self.inputs)
@@ -257,10 +245,6 @@ impl ContractViolation {
     fn render(&self) -> String {
         let mut lines = vec![format!("契約違反 [{}] {}", self.kind, self.function)];
         lines.push(format!("条件: {}", self.condition));
-
-        if let Some(message) = &self.message {
-            lines.push(format!("説明: {message}"));
-        }
 
         if let Some(details) = &self.details {
             lines.push(format!("詳細: {details}"));
@@ -282,14 +266,13 @@ impl ContractViolation {
 #[pymethods]
 impl ContractViolation {
     #[new]
-    #[pyo3(signature = (function, kind, condition, message=None, location=None, inputs=None, details=None))]
+    #[pyo3(signature = (function, kind, condition, location=None, inputs=None, details=None))]
     #[allow(clippy::too_many_arguments)]
     fn new(
         py: Python<'_>,
         function: String,
         kind: String,
         condition: String,
-        message: Option<String>,
         location: Option<Py<ContractLocation>>,
         inputs: Option<Vec<Py<InputSnapshot>>>,
         details: Option<String>,
@@ -305,7 +288,6 @@ impl ContractViolation {
             function,
             kind: normalize_kind(&kind)?,
             condition,
-            message,
             details,
             location,
             inputs,
@@ -325,11 +307,6 @@ impl ContractViolation {
     #[getter]
     fn condition(&self) -> String {
         self.condition.clone()
-    }
-
-    #[getter]
-    fn message(&self) -> Option<String> {
-        self.message.clone()
     }
 
     #[getter]

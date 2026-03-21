@@ -37,6 +37,7 @@ MVP では次を優先します。
 
 - 主語は常に Python 利用者です。Rust crate は内部実装として扱います。
 - `raises(...)` / `error(...)` は Python の例外フローに合わせて設計します。
+- 契約条項の補足 `message` は持たず、条件式そのものを仕様として扱います。
 - `pure(...)` は現段階では意図表明に留め、将来 lint や静的解析へ接続します。
 - `panic_free(...)` は想定外例外を契約違反へ変換する宣言です。
 - `@invariant_class(...)` は class 定義時に public instance method へ invariant を注入します。

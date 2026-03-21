@@ -18,11 +18,10 @@ pub fn violation(
     kind: ContractKind,
     function: &'static str,
     condition: &'static str,
-    message: Option<&'static str>,
     location: ContractLocation,
     inputs: Vec<InputSnapshot>,
 ) -> ContractViolation {
-    ContractViolation::new(function, kind, condition, message, location, inputs)
+    ContractViolation::new(function, kind, condition, location, inputs)
 }
 
 /// 不変条件違反を明示的に構築します。
@@ -30,7 +29,6 @@ pub fn violation(
 pub fn invariant_violation(
     function: &'static str,
     condition: &'static str,
-    message: Option<&'static str>,
     location: ContractLocation,
     inputs: Vec<InputSnapshot>,
 ) -> ContractViolation {
@@ -38,7 +36,6 @@ pub fn invariant_violation(
         ContractKind::Invariant,
         function,
         condition,
-        message,
         location,
         inputs,
     )
@@ -47,7 +44,6 @@ pub fn invariant_violation(
 /// `panic_free` 契約つき関数内で捕捉したpanicを契約違反へ変換します。
 pub fn handle_panic(
     function: &'static str,
-    message: Option<&'static str>,
     location: ContractLocation,
     inputs: Vec<InputSnapshot>,
     payload: Box<dyn std::any::Any + Send>,
@@ -59,7 +55,6 @@ pub fn handle_panic(
                 function,
                 ContractKind::PanicContract,
                 "panic_free",
-                message,
                 location,
                 inputs,
             )
