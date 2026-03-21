@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1 - 2026-03-22
+
+- release workflow に PyPI token fallback と配布物確認 step を追加
+- `0.3.0` の callable-only 契約 API をそのまま再リリース
+
 ## 0.3.0 - 2026-03-22
 
 - Python の `pre(...)` / `post(...)` / `invariant(...)` / `error(...)` から手書きの条件文字列引数を削除
