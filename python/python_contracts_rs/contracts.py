@@ -444,7 +444,7 @@ def violations_to_sarif(
             {
                 "tool": {
                     "driver": {
-                        "name": "python-contracts-rs",
+                        "name": "contract-check",
                         "rules": rules,
                     }
                 },

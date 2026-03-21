@@ -2,8 +2,9 @@
 
 ## 目的
 
-このリポジトリの主成果物は Python パッケージ `python-contracts-rs` です。Rust は
+このリポジトリの主成果物は Python パッケージ `contract-check` です。Rust は
 実装言語と安全性基盤として使い、Python 利用者には decorator ベースの自然な API を提供します。
+配布名は `contract-check`、import 名は `python_contracts_rs` を維持します。
 MVP では次を優先します。
 
 - Python から自然に書ける契約 API

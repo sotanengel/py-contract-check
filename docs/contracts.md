@@ -1,7 +1,9 @@
 # 契約機能一覧
 
-`python-contracts-rs` は Python decorator と Rust 製の構造化違反データを組み合わせて契約を表現します。
+`contract-check` は Python decorator と Rust 製の構造化違反データを組み合わせて契約を表現します。
 sync / async 関数、async generator、async context manager を同じ記法で扱えます。
+
+配布名は `contract-check`、Python import 名は `python_contracts_rs` です。
 
 ## 基本記法
 

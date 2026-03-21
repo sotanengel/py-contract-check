@@ -3,7 +3,7 @@ requires = ["maturin>=1.7,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "python-contracts-rs"
+name = "contract-check"
 version = "0.1.0"
 description = "Design-by-contract library for Python, implemented in Rust."
 readme = "README.md"
