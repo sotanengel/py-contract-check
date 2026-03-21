@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Internal Rust runtime primitives for python-contracts-rs."
+description = "Internal Rust runtime primitives for contract-check."
 readme = "../../README.md"
 keywords = ["python", "contract", "design-by-contract", "validation"]
 categories = ["development-tools::testing", "rust-patterns"]
@@ -16,7 +16,7 @@ macros = ["dep:rust-contract-checks-macros"]
 always-contracts = []
 
 [dependencies]
-rust-contract-checks-macros = { path = "../rust-contract-checks-macros", optional = true }
+rust-contract-checks-macros = { version = "0.1.0", path = "../rust-contract-checks-macros", optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
