@@ -2,40 +2,45 @@
 
 ## 目的
 
-このリポジトリは、`life4/deal` の主要思想を Rust へ移し替える初期版です。
-MVP段階では「契約を宣言できる」「違反を構造化できる」「テストとCIへ接続できる」
-ことを優先しています。
+このリポジトリの主成果物は Python パッケージ `python-contracts-rs` です。Rust は
+実装言語と安全性基盤として使い、Python 利用者には decorator ベースの自然な API を提供します。
+MVP では次を優先します。
+
+- Python から自然に書ける契約 API
+- 例外と契約違反を分離した構造化エラー
+- Python/Rust の両方で回るテストと CI 導線
 
 ## モジュール構成
 
+- `python/python_contracts_rs/contracts.py`
+  Python 公開 decorator と runtime orchestration を担当します。
+- `python/python_contracts_rs/__init__.py`
+  Python 公開 API のエクスポート面です。
+- `bindings/python-contracts-rs/src/lib.rs`
+  PyO3 で `ContractViolation`、`ContractMetadata`、設定関数を Python へ公開します。
 - `crates/rust-contract-checks/src/config.rs`
   契約検証の有効 / 無効判定を担当します。
 - `crates/rust-contract-checks/src/metadata.rs`
-  契約種別と条項メタデータを保持します。
+  Rust 側の契約種別と条項表現です。
 - `crates/rust-contract-checks/src/report.rs`
-  `ContractViolation` とログ表現を定義します。
-- `crates/rust-contract-checks/src/runtime.rs`
-  入力スナップショット生成と違反送出を担当します。
-- `crates/rust-contract-checks-macros/src/lib.rs`
-  `#[contract(...)]` を展開して実行時検証コードへ落とし込みます。
+  Rust 側の構造化違反データとログフォーマットです。
 
-## 現在のAPI設計
+## データの流れ
 
-- 主要APIは `#[contract(...)]`
-- free function では hidden metadata const を生成
-- method では直接ラップのみ行い、trait impl でも壊れないことを優先
-- `Result` 失敗条件は OR 条件として扱う
-- 契約違反は `panic_any(ContractViolation)` で送出する
+1. Python 利用者が `@contract(...)` に clause を宣言します。
+2. `contracts.py` が sync / async 関数、async generator、async context manager の呼び出し前後で predicate を評価します。
+3. 違反時は PyO3 側の `_native.ContractViolation` を生成します。
+4. Python 側では `ContractViolationError` として送出し、`to_dict()` / `to_json()` や helper 関数で構造化情報を検査します。
 
-## 監査性
+## 設計上の判断
 
-`ContractViolation::to_log_line()` は単一行フォーマットを返します。今後 JSON / SARIF を追加する場合も、
-`ContractViolation` を共通データ構造として流用できます。
+- 主語は常に Python 利用者です。Rust crate は内部実装として扱います。
+- `raises(...)` / `error(...)` は Python の例外フローに合わせて設計します。
+- `pure(...)` は現段階では意図表明に留め、将来 lint や静的解析へ接続します。
+- `panic_free(...)` は想定外例外を契約違反へ変換する宣言です。
+- `@invariant_class(...)` は class 定義時に public instance method へ invariant を注入します。
 
 ## 将来の拡張ポイント
 
-- async / const fn 対応
-- 生成した契約メタデータの収集用 `cargo contract-checks` サブコマンド
-- `pure` / `panic_free` の lint 化
-- property-based testing の自動入力生成補助
-- JSON / SARIF / tracing 出力
+- Hypothesis などとの自動連携
+- tracing backend

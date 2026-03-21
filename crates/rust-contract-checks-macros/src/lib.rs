@@ -203,7 +203,7 @@ impl FunctionLike {
     fn vis(&self) -> Option<&syn::Visibility> {
         match self {
             Self::Free(function) => Some(&function.vis),
-            Self::Method(_) => None,
+            Self::Method(method) => Some(&method.vis),
         }
     }
 
@@ -344,17 +344,46 @@ fn expand_function_like(
 
     let metadata_ident = format_ident!("__RUST_CONTRACT_CHECKS_METADATA_{}", function_name);
     let metadata_accessor = format_ident!("__rust_contract_checks_metadata_{}", function_name);
+    let metadata_visibility = vis.clone().unwrap_or_else(|| syn::Visibility::Inherited);
     let metadata_const = quote! {
         #[doc(hidden)]
         #[allow(non_upper_case_globals)]
-        pub const #metadata_ident: #contract_crate::ContractMetadata = #contract_crate::ContractMetadata::new(
+        #metadata_visibility const #metadata_ident: #contract_crate::ContractMetadata = #contract_crate::ContractMetadata::new(
             #function_path,
             &[#(#metadata_entries),*]
         );
-
+    };
+    let free_metadata_accessor = quote! {
         #[doc(hidden)]
-        pub fn #metadata_accessor() -> &'static #contract_crate::ContractMetadata {
+        #metadata_visibility fn #metadata_accessor() -> &'static #contract_crate::ContractMetadata {
             &#metadata_ident
+        }
+    };
+    let method_metadata_accessor = quote! {
+        #[doc(hidden)]
+        #metadata_visibility fn #metadata_accessor() -> &'static #contract_crate::ContractMetadata {
+            &Self::#metadata_ident
+        }
+    };
+    let panic_execution = if panic_free_marker {
+        let panic_message_tokens = option_literal(panic_contract_message.as_ref());
+        quote! {
+            match ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| #block)) {
+                Ok(value) => value,
+                Err(payload) => {
+                    #contract_crate::handle_panic(
+                        #function_path,
+                        #panic_message_tokens,
+                        #contract_crate::ContractLocation::new(file!(), line!(), column!()),
+                        vec![#(#post_inputs),*],
+                        payload
+                    );
+                }
+            }
+        }
+    } else {
+        quote! {
+            (|| #block)()
         }
     };
 
@@ -364,7 +393,7 @@ fn expand_function_like(
             #(#pre_invariants)*
         }
 
-        let __contract_result = (|| #block)();
+        let __contract_result = #panic_execution;
 
         if #contract_crate::contracts_enabled() {
             #(#post_checks)*
@@ -384,6 +413,7 @@ fn expand_function_like(
             };
             quote! {
                 #metadata_const
+                #free_metadata_accessor
                 #(#attrs)*
                 #visibility #sig {
                     #expanded_body
@@ -391,10 +421,14 @@ fn expand_function_like(
             }
         }
         FunctionLike::Method(method) => {
+            let visibility = method.vis;
+            let defaultness = method.defaultness;
             let sig = method.sig;
             quote! {
+                #metadata_const
+                #method_metadata_accessor
                 #(#attrs)*
-                #sig {
+                #visibility #defaultness #sig {
                     #expanded_body
                 }
             }

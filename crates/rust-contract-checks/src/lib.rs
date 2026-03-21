@@ -1,34 +1,9 @@
 #![doc = r#"
-Rustで Design by Contract を扱うための軽量ライブラリです。
+`rust-contract-checks` は `python-contracts-rs` 向けの内部 Rust コアです。
 
-`life4/deal` の思想をRust向けに再設計し、前提条件、事後条件、不変条件、
-失敗条件、純粋性の意図をコードとテストに埋め込めるようにします。
-
-```rust
-use rust_contract_checks::contract;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum DivideError {
-    DivisionByZero,
-}
-
-#[contract(
-    pre(divisor != 0, "0で割る入力は許可しない"),
-    post(*ret * divisor == dividend, "戻り値から元の被除数を復元できる"),
-    error(matches!(err, DivideError::DivisionByZero), "許可された失敗は0除算のみ"),
-    pure("入力以外の状態に依存しない"),
-    panic_free("契約違反を除きpanicしない")
-)]
-fn divide(dividend: i32, divisor: i32) -> Result<i32, DivideError> {
-    if divisor == 0 {
-        return Err(DivideError::DivisionByZero);
-    }
-
-    Ok(dividend / divisor)
-}
-
-assert_eq!(divide(8, 2), Ok(4));
-```
+主成果物は Python パッケージであり、この crate では契約種別、構造化違反情報、
+設定判定、Rust 側の補助 API を提供します。Python 利用例はリポジトリ直下の
+`README.md` と `examples/quickstart.py` を参照してください。
 "#]
 #![forbid(unsafe_code)]
 
@@ -42,12 +17,15 @@ mod runtime;
 pub use crate::config::{compile_time_contracts_enabled, contracts_enabled};
 pub use crate::metadata::{ContractClause, ContractKind, ContractMetadata};
 pub use crate::report::{ContractLocation, ContractViolation, InputSnapshot};
-pub use crate::runtime::{handle_violation, input_snapshot, invariant_violation, violation};
+pub use crate::runtime::{
+    handle_panic, handle_violation, input_snapshot, invariant_violation, violation,
+};
 
 #[cfg(feature = "macros")]
 pub use rust_contract_checks_macros::contract;
 
 /// 実行時不変条件を自前でまとめたい型向けの補助トレイトです。
+#[allow(clippy::result_large_err)]
 pub trait Invariant {
     /// 不変条件を検証し、違反時は `ContractViolation` を返します。
     fn check_invariants(&self) -> Result<(), ContractViolation>;

@@ -1,24 +1,27 @@
 #![allow(missing_docs)]
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use rust_contract_checks::contract;
+use criterion::{criterion_group, criterion_main, Criterion};
+use rust_contract_checks::{ContractKind, ContractLocation, ContractViolation, InputSnapshot};
 
-fn plain_abs(value: i32) -> i32 {
-    value.abs()
+fn plain_log_line() -> String {
+    String::from("contract_violation|kind=precondition|function=python_contracts_rs.divide")
 }
 
-#[contract(
-    pre(value >= 0, "入力は非負"),
-    post(*ret >= 0, "戻り値は非負"),
-    pure("入力だけで結果が決まる")
-)]
-fn checked_abs(value: i32) -> i32 {
-    value.abs()
+fn structured_log_line() -> String {
+    ContractViolation::new(
+        "python_contracts_rs.divide",
+        ContractKind::Precondition,
+        "divisor != 0",
+        Some("0で割る入力は許可しない"),
+        ContractLocation::new("examples/quickstart.py", 4, 1),
+        vec![InputSnapshot::described("divisor", "int", "0")],
+    )
+    .to_log_line()
 }
 
 fn runtime_overhead(c: &mut Criterion) {
-    c.bench_function("plain_abs", |b| b.iter(|| plain_abs(black_box(42))));
-    c.bench_function("checked_abs", |b| b.iter(|| checked_abs(black_box(42))));
+    c.bench_function("plain_log_line", |b| b.iter(plain_log_line));
+    c.bench_function("structured_log_line", |b| b.iter(structured_log_line));
 }
 
 criterion_group!(benches, runtime_overhead);

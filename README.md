@@ -1,155 +1,154 @@
-# rust-contract-checks
+# python-contracts-rs
 
-Rust向けの Design by Contract ライブラリです。`life4/deal` の主要思想を参考にしつつ、
-Rustの型システム、`Result`、macro展開、CI運用に合わせて再設計しています。
+This is a design-by-contract library for Python, implemented in Rust.
 
-## 1. ライブラリ概要
+`python-contracts-rs` は、Python 向けの契約プログラミングライブラリです。公開 API は
+Python の decorator 中心で設計し、内部の構造化違反情報と実行時基盤を Rust で実装します。
+思想面では [`life4/deal`](https://github.com/life4/deal) を参考にしつつ、配布、監査性、
+AI 補助開発、Python/Rust 混成運用を前提に再設計しています。
 
-`rust-contract-checks` は、関数やメソッドに対して以下の契約を宣言し、デバッグ時または
-`always-contracts` feature 有効時に実行時検証するライブラリです。
-
-- 前提条件
-- 事後条件
-- 不変条件
-- 許可された失敗条件
-- 純粋性の意図
-- panic方針の意図
-
-## 2. 何ができるか
-
-- `#[contract(...)]` で契約を関数定義に近い位置へ書ける
-- 契約違反を `ContractViolation` として構造化し、panic payload に載せられる
-- `Result` を返すAPIの失敗経路を `error(...)` で明示できる
-- 状態保持メソッドへ `invariant(...)` を付与できる
-- 契約メタデータを `ContractMetadata` / `ContractClause` として表現できる
-- property-based testing、examples、CIへ接続しやすい構成を持つ
-
-## 3. 参考ライブラリへの謝意
-
-このライブラリは Python 向け Design by Contract ライブラリ
-[`life4/deal`](https://github.com/life4/deal) の思想と主要機能に敬意を払いつつ、
-Rust向けに再設計したものです。
-
-参考にした点:
-
-- 前提条件、事後条件、不変条件、失敗条件を明示する設計
-- テスト支援と解析接続を意識した契約メタデータの扱い
-- 仕様意図をコード近傍へ置くことで、保守とAI支援をしやすくする方針
-
-本実装は `deal` の表面的な移植ではなく、`Result`、stable Rust、feature flag、
-proc-macro を前提にした Rust 流の再構成です。
-
-## 4. クイックスタート
+## クイックスタート
 
 ```bash
-cargo add rust-contract-checks
+pip install python-contracts-rs
 ```
 
-```rust
-use rust_contract_checks::contract;
+```python
+import asyncio
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum DivideError {
-    DivisionByZero,
-}
+from python_contracts_rs import (
+    ContractViolationError,
+    contract,
+    invariant,
+    invariant_class,
+    post,
+    pre,
+    pure,
+    raises,
+)
 
-#[contract(
-    pre(divisor != 0, "0で割る入力は許可しない"),
-    post(*ret * divisor == dividend, "戻り値から元の被除数を復元できる"),
-    error(matches!(err, DivideError::DivisionByZero), "0除算のみ許可する"),
+
+@contract(
+    pre("divisor != 0", lambda divisor: divisor != 0, "0で割る入力は許可しない"),
+    post(
+        "result * divisor == dividend",
+        lambda result, dividend, divisor: result * divisor == dividend,
+        "戻り値から元の被除数を復元できる",
+    ),
+    raises(ZeroDivisionError, message="0除算だけを許可する"),
     pure("入力以外の状態に依存しない"),
-    panic_free("契約違反以外ではpanicしない")
-)]
-fn divide(dividend: i32, divisor: i32) -> Result<i32, DivideError> {
-    if divisor == 0 {
-        return Err(DivideError::DivisionByZero);
-    }
+)
+def divide(dividend: int, divisor: int) -> int:
+    if divisor == 0:
+        raise ZeroDivisionError("division by zero")
+    return dividend // divisor
 
-    Ok(dividend / divisor)
-}
+
+@contract(
+    pre("value > 0", lambda value: value > 0, "正の値だけを許可する"),
+    post("result == value + 1", lambda result, value: result == value + 1, "結果は入力+1"),
+)
+async def async_increment(value: int) -> int:
+    await asyncio.sleep(0)
+    return value + 1
+
+
+@invariant_class(
+    invariant("self.balance >= 0", lambda self: self.balance >= 0, "残高は非負"),
+)
+class Wallet:
+    def __init__(self, balance: int) -> None:
+        self.balance = balance
+
+    def debit(self, amount: int) -> None:
+        self.balance -= amount
+
+
+assert divide(12, 3) == 4
+assert asyncio.run(async_increment(2)) == 3
 ```
 
 標準挙動:
 
-- デバッグビルドでは契約検証が有効
-- リリースビルドでは無効
-- `--features always-contracts` でリリースビルドでも有効
-- `RUST_CONTRACT_CHECKS=0` で実行時無効化
+- 契約は sync / async 関数の両方で有効です
+- `PYTHON_CONTRACTS_RS=0` で実行時に無効化できます
+- 契約違反は `ContractViolationError` として送出され、`to_dict()` / `to_json()` で構造化出力できます
 
-## 5. 契約機能一覧
+## 提供機能
 
-| 機能 | 記法 | 補足 |
+| 機能 | Python API | 補足 |
 | --- | --- | --- |
-| 前提条件 | `pre(condition, "説明")` | 実行前に全件評価 |
-| 事後条件 | `post(condition, "説明")` | `ret` を参照可能 |
-| 不変条件 | `invariant(condition, "説明")` | メソッド前後で評価 |
-| 失敗条件 | `error(condition, "説明")` | `Result::Err` のみ評価 |
-| 純粋性 | `pure("説明")` | 現在は意図表明と軽いシグネチャ検査 |
-| panic方針 | `panic_free("説明")` | 現在は意図表明 |
+| 前提条件 | `pre(...)` | sync / async / async generator の実行前に検証 |
+| 事後条件 | `post(...)` | 戻り値は `result` / `ret` で参照 |
+| 不変条件 | `invariant(...)` / `@invariant_class(...)` | method 単位または class 全体へ注入 |
+| 期待例外 | `raises(...)` / `error(...)` | 許可された例外のみ通過 |
+| 純粋性 | `pure(...)` | 現段階では意図表明 |
+| panic 方針 | `panic_free(...)` | 予期しない例外を契約違反へ変換 |
+| 契約メタデータ | `get_contract_metadata(...)` | ドキュメント生成やテスト補助向け |
+| 構造化出力 | `violation_to_dict(...)` / `violation_to_json(...)` | CI や監査ログ向け |
+| SARIF 出力 | `violation_to_sarif_result(...)` / `violations_to_sarif(...)` | GitHub code scanning 連携向け |
 
 詳細は [docs/contracts.md](docs/contracts.md) を参照してください。
 
-## 6. 例外・失敗表現
+## リポジトリ構成
 
-契約違反は通常の `Result` エラーと混同せず、`ContractViolation` として構造化して扱います。
-attribute macro 経由では `panic_any` で送出されるため、テストでは panic payload を downcast して検査できます。
+- `python/python_contracts_rs/`
+  Python 公開 API と decorator 実装です。
+- `bindings/python-contracts-rs/`
+  PyO3 ベースの Python/Rust バインディングです。
+- `crates/rust-contract-checks/`
+  Rust 側の低レベルな契約種別・違反情報・設定判定です。
+- `examples/quickstart.py`
+  Python 利用者向けの最短例です。
+- `tests/python/test_contracts.py`
+  Python 公開 API の統合テストです。
+- `tests/contracts.rs`
+  Rust コアの回帰テストです。
 
-`error(...)` は `Result` ベースの失敗経路を対象とします。panic系は `panic_free(...)` で別枠の
-メタデータとして扱い、将来的な静的解析やlint連携の拡張点としています。
+## 生成 AI 向け案内
 
-## 7. テスト / CI 連携
+このプロジェクトは **Python library implemented in Rust** です。Rust 単独ライブラリとして
+読まないでください。読む順序は次を推奨します。
 
-- `cargo test --workspace --all-features --all-targets`
-- `cargo test -p rust-contract-checks --doc`
-- `cargo test -p rust-contract-checks --examples`
-- `cargo clippy --workspace --all-targets --all-features -- -D warnings`
-- `cargo fmt --all --check`
-- `cargo audit`
-- `cargo deny check licenses bans sources`
+1. この `README.md`
+2. [docs/contracts.md](docs/contracts.md)
+3. [examples/quickstart.py](examples/quickstart.py)
+4. [tests/python/test_contracts.py](tests/python/test_contracts.py)
+5. [ARCHITECTURE.md](ARCHITECTURE.md)
+6. [AGENTS.md](AGENTS.md)
 
-GitHub Actions では Linux / macOS / Windows の stable Rust を対象に検証します。
+AI 運用方針:
 
-## 8. 生成AI向けの読み方
-
-生成AIがこのリポジトリを読むときは、次の順序を推奨します。
-
-1. この `README.md` の概要とクイックスタート
-2. [docs/contracts.md](docs/contracts.md) の契約機能一覧
-3. [examples/quickstart.rs](examples/quickstart.rs) と [tests/contracts.rs](tests/contracts.rs)
-4. [ARCHITECTURE.md](ARCHITECTURE.md) の設計意図
-5. [AGENTS.md](AGENTS.md) の変更方針
-
-AI運用方針:
-
-- 内部的な推論を英語で進める運用は許容
+- 主成果物は Python API として扱う
+- 内部推論を英語で行う運用は許容
 - 最終回答とコードコメントは日本語
-- 公開API変更時は tests / examples / README を同時更新
+- 仕様変更時は README / examples / tests / docs を同時更新
 
-## 9. 開発方法
+## 開発
 
-ローカル:
+ローカル開発:
 
 ```bash
+make setup
 make ci
 ```
 
 Docker:
 
 ```bash
-docker build -t rust-contract-checks .
-docker run --rm -it -v "$PWD:/workspace" rust-contract-checks make ci
+docker build -t python-contracts-rs .
+docker run --rm -it -v "$PWD:/workspace" python-contracts-rs make ci
 ```
 
 Dev Container は [`.devcontainer/devcontainer.json`](.devcontainer/devcontainer.json) を参照してください。
 
-## 10. 制限事項
+## 現状の制限
 
-- 現時点では sync な関数 / メソッドのみ対応
-- `const fn` は未対応
-- `pure(...)` と `panic_free(...)` は主に意図表明であり、完全な静的保証ではない
-- `no_std` は未対応
-- 自動JSON / SARIF出力は未実装だが、`ContractViolation` の構造は拡張しやすい形にしている
+- `@invariant_class(...)` は public instance method と `__init__` を対象にします
+- private / dunder / staticmethod / classmethod への自動適用は明示設定または将来拡張の対象です
+- `pure(...)` は意図表明です
+- tracing backend は未実装です
 
-## 11. ライセンス
+## ライセンス
 
 MIT License。詳細は [LICENSE](LICENSE) を参照してください。

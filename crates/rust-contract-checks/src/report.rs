@@ -86,6 +86,8 @@ pub struct ContractViolation {
     pub condition: &'static str,
     /// 任意の補足メッセージです。
     pub message: Option<&'static str>,
+    /// 実行時にしか得られない補足情報です。
+    pub details: Option<String>,
     /// 発生位置です。
     pub location: ContractLocation,
     /// 入力値の要約です。
@@ -108,15 +110,24 @@ impl ContractViolation {
             kind,
             condition,
             message,
+            details: None,
             location,
             inputs,
         }
+    }
+
+    /// 実行時の詳細情報を追加します。
+    #[must_use]
+    pub fn with_details(mut self, details: impl Into<String>) -> Self {
+        self.details = Some(details.into());
+        self
     }
 
     /// 監査やCIログに流しやすい単一行フォーマットを返します。
     #[must_use]
     pub fn to_log_line(&self) -> String {
         let message = self.message.unwrap_or("-");
+        let details = self.details.as_deref().unwrap_or("-");
         let inputs = if self.inputs.is_empty() {
             String::from("-")
         } else {
@@ -128,11 +139,12 @@ impl ContractViolation {
         };
 
         format!(
-            "contract_violation|kind={}|function={}|condition={}|message={}|location={}|inputs={}",
+            "contract_violation|kind={}|function={}|condition={}|message={}|details={}|location={}|inputs={}",
             self.kind.as_str(),
             self.function,
             self.condition,
             message,
+            details,
             self.location,
             inputs
         )
@@ -146,6 +158,10 @@ impl Display for ContractViolation {
 
         if let Some(message) = self.message {
             writeln!(f, "説明: {message}")?;
+        }
+
+        if let Some(details) = &self.details {
+            writeln!(f, "詳細: {details}")?;
         }
 
         writeln!(f, "位置: {}", self.location)?;

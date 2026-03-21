@@ -44,6 +44,43 @@ pub fn invariant_violation(
     )
 }
 
+/// `panic_free` 契約つき関数内で捕捉したpanicを契約違反へ変換します。
+pub fn handle_panic(
+    function: &'static str,
+    message: Option<&'static str>,
+    location: ContractLocation,
+    inputs: Vec<InputSnapshot>,
+    payload: Box<dyn std::any::Any + Send>,
+) -> ! {
+    match payload.downcast::<ContractViolation>() {
+        Ok(violation) => handle_violation(*violation),
+        Err(payload) => {
+            let violation = ContractViolation::new(
+                function,
+                ContractKind::PanicContract,
+                "panic_free",
+                message,
+                location,
+                inputs,
+            )
+            .with_details(render_panic_payload(payload.as_ref()));
+            handle_violation(violation);
+        }
+    }
+}
+
+fn render_panic_payload(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(message) = payload.downcast_ref::<String>() {
+        return message.clone();
+    }
+
+    if let Some(message) = payload.downcast_ref::<&'static str>() {
+        return (*message).to_owned();
+    }
+
+    String::from("非文字列panic payload")
+}
+
 /// 契約違反をpanic payloadとして送出します。
 pub fn handle_violation(violation: ContractViolation) -> ! {
     std::panic::panic_any(violation);

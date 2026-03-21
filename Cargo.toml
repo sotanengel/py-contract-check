@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "bindings/python-contracts-rs",
     "crates/rust-contract-checks",
     "crates/rust-contract-checks-macros",
 ]

@@ -1,0 +1,23 @@
+[package]
+name = "python-contracts-rs-bindings"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "PyO3 bindings for python-contracts-rs."
+
+[features]
+default = []
+extension-module = ["pyo3/extension-module"]
+
+[dependencies]
+pyo3 = { version = "0.23", features = ["abi3-py39"] }
+rust-contract-checks = { path = "../../crates/rust-contract-checks", default-features = false }
+
+[lib]
+name = "_native"
+crate-type = ["cdylib"]
+
+[lints]
+workspace = true
