@@ -12,7 +12,7 @@ default = []
 extension-module = ["pyo3/extension-module"]
 
 [dependencies]
-pyo3 = { version = "0.24", features = ["abi3-py39"] }
+pyo3 = { version = "0.28", features = ["abi3-py39"] }
 rust-contract-checks = { version = "0.1.0", path = "../../crates/rust-contract-checks", default-features = false }
 
 [lib]
