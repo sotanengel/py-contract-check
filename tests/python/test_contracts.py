@@ -25,8 +25,48 @@ from python_contracts_rs import (
 )
 
 
+def is_even(value: int) -> bool:
+    return value % 2 == 0
+
+
+def result_exceeds_value(result: int, value: int) -> bool:
+    return result > value
+
+
+def positive_value(value: int) -> bool:
+    return value > 0
+
+
+def incremented_value(result: int, value: int) -> bool:
+    return result == value + 1
+
+
+def non_negative_start(start: int) -> bool:
+    return start >= 0
+
+
+def result_not_below_start(result: int, start: int) -> bool:
+    return result >= start
+
+
+def context_has_prefix(result: str) -> bool:
+    return result.startswith("ctx:")
+
+
+def context_ends_with_ok(result: str) -> bool:
+    return result.endswith("ok")
+
+
+def balance_is_non_negative(self: Any) -> bool:
+    return self.balance >= 0
+
+
+def amount_is_non_negative(amount: int) -> bool:
+    return amount >= 0
+
+
 @contract(
-    pre("value % 2 == 0", lambda value: value % 2 == 0),
+    pre(is_even),
     pure(),
 )
 def only_even(value: int) -> int:
@@ -34,7 +74,7 @@ def only_even(value: int) -> int:
 
 
 @contract(
-    post("result > value", lambda result, value: result > value),
+    post(result_exceeds_value),
 )
 def broken_increment(value: int) -> int:
     return value
@@ -68,8 +108,8 @@ def panic_if_requested(flag: bool) -> int:
 
 
 @contract(
-    pre("value > 0", lambda value: value > 0),
-    post("result == value + 1", lambda result, value: result == value + 1),
+    pre(positive_value),
+    post(incremented_value),
 )
 async def async_increment(value: int) -> int:
     await asyncio.sleep(0)
@@ -87,8 +127,8 @@ async def async_broken_error(flag: bool) -> int:
 
 
 @contract(
-    pre("start >= 0", lambda start: start >= 0),
-    post("result >= start", lambda result, start: result >= start),
+    pre(non_negative_start),
+    post(result_not_below_start),
 )
 async def async_counter(start: int) -> Any:
     for offset in range(2):
@@ -107,10 +147,7 @@ async def async_counter_with_error(flag: bool) -> Any:
 
 
 @contract(
-    post(
-        "result.startswith('ctx:')",
-        lambda result: result.startswith("ctx:"),
-    ),
+    post(context_has_prefix),
 )
 @asynccontextmanager
 async def managed_resource(name: str) -> Any:
@@ -119,10 +156,7 @@ async def managed_resource(name: str) -> Any:
 
 
 @contract(
-    post(
-        "result.startswith('ctx:')",
-        lambda result: result.startswith("ctx:"),
-    ),
+    post(context_has_prefix),
 )
 @asynccontextmanager
 async def broken_managed_resource() -> Any:
@@ -132,10 +166,7 @@ async def broken_managed_resource() -> Any:
 
 @asynccontextmanager
 @contract(
-    post(
-        "result.endswith('ok')",
-        lambda result: result.endswith("ok"),
-    ),
+    post(context_ends_with_ok),
 )
 async def managed_resource_contract_inside() -> Any:
     await asyncio.sleep(0)
@@ -147,20 +178,20 @@ class Wallet:
         self.balance = balance
 
     @contract(
-        invariant("self.balance >= 0", lambda self: self.balance >= 0),
+        invariant(balance_is_non_negative),
     )
     def debit(self, amount: int) -> None:
         self.balance -= amount
 
 
 @invariant_class(
-    invariant("self.balance >= 0", lambda self: self.balance >= 0),
+    invariant(balance_is_non_negative),
 )
 class AutoWallet:
     def __init__(self, balance: int) -> None:
         self.balance = balance
 
-    @contract(pre("amount >= 0", lambda amount: amount >= 0))
+    @contract(pre(amount_is_non_negative))
     def debit(self, amount: int) -> None:
         self.balance -= amount
 
@@ -169,7 +200,7 @@ class AutoWallet:
 
 
 @invariant_class(
-    invariant("self.balance >= 0", lambda self: self.balance >= 0),
+    invariant(balance_is_non_negative),
     include_private=True,
 )
 class StrictWallet:
@@ -181,7 +212,7 @@ class StrictWallet:
 
 
 @invariant_class(
-    invariant("self.balance >= 0", lambda self: self.balance >= 0),
+    invariant(balance_is_non_negative),
 )
 class AsyncWallet:
     def __init__(self, balance: int) -> None:
@@ -198,7 +229,7 @@ def test_precondition_violation_contains_context() -> None:
 
     violation = exc_info.value.violation
     assert violation.kind == "precondition"
-    assert violation.condition == "value % 2 == 0"
+    assert violation.condition == "is_even"
     assert violation.inputs[0].name == "value"
     assert violation.inputs[0].summary == "3"
 
@@ -209,7 +240,7 @@ def test_postcondition_violation_is_reported() -> None:
 
     violation = exc_info.value.violation
     assert violation.kind == "postcondition"
-    assert violation.condition == "result > value"
+    assert violation.condition == "result_exceeds_value"
 
 
 def test_declared_exception_passes_through() -> None:
@@ -309,7 +340,7 @@ def test_invariant_is_checked_after_state_change() -> None:
 
     violation = exc_info.value.violation
     assert violation.kind == "invariant"
-    assert violation.condition == "self.balance >= 0"
+    assert violation.condition == "balance_is_non_negative"
 
 
 def test_metadata_is_available_from_wrapped_function() -> None:
@@ -334,7 +365,7 @@ def test_violation_serializers_return_json_safe_payload() -> None:
     assert payload["inputs"][0]["name"] == "value"
     assert "message" not in payload
     assert '"kind": "precondition"' in exc_info.value.to_json()
-    assert violation_to_dict(exc_info.value.violation)["condition"] == "value % 2 == 0"
+    assert violation_to_dict(exc_info.value.violation)["condition"] == "is_even"
     assert violation_to_json(exc_info.value.violation).startswith("{")
 
 
@@ -372,7 +403,7 @@ def test_invariant_class_checks_constructor_and_public_methods() -> None:
     with pytest.raises(ContractViolationError) as debit_info:
         wallet.debit(3)
 
-    assert debit_info.value.violation.condition == "self.balance >= 0"
+    assert debit_info.value.violation.condition == "balance_is_non_negative"
 
 
 def test_invariant_class_merges_metadata_and_supports_bound_methods() -> None:

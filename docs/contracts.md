@@ -8,14 +8,30 @@ sync / async 関数、async generator、async context manager を同じ記法で
 ## 基本記法
 
 ```python
-from python_contracts_rs import contract, invariant, panic_free, post, pre, raises
+from python_contracts_rs import contract, error, invariant, panic_free, post, pre, raises
+
+
+def positive_value(value: int) -> bool:
+    return value > 0
+
+
+def result_not_below_input(result: int, value: int) -> bool:
+    return result >= value
+
+
+def balance_is_non_negative(self) -> bool:
+    return self.balance >= 0
+
+
+def is_value_error(exc: Exception) -> bool:
+    return isinstance(exc, ValueError)
 
 
 @contract(
-    pre("value > 0", lambda value: value > 0),
-    post("result >= value", lambda result, value: result >= value),
-    raises(ValueError),
-    invariant("self.balance >= 0", lambda self: self.balance >= 0),
+    pre(positive_value),
+    post(result_not_below_input),
+    error(is_value_error),
+    invariant(balance_is_non_negative),
     panic_free(),
 )
 def example(value: int) -> int:
@@ -26,7 +42,7 @@ def example(value: int) -> int:
 
 - 関数実行前にすべて評価します。
 - 偽になった時点で `ContractViolationError` を送出します。
-- `pre(callable)` も使えますが、監査性を上げたい場合は条件文字列も渡してください。
+- `pre(...)` は predicate callable だけを受け取ります。
 
 ## `post(...)`
 
@@ -51,8 +67,7 @@ def example(value: int) -> int:
 ## `raises(...)` / `error(...)`
 
 - `raises(ValueError)` は例外型による許可宣言です。
-- `error("isinstance(exc, ValueError)", lambda exc: isinstance(exc, ValueError))` のように
-  predicate で細かく書くこともできます。
+- `error(is_value_error)` のように predicate callable で細かく書くこともできます。
 - 宣言した例外に一致しない場合は `kind="error"` の契約違反になります。
 
 ## `pure(...)`
@@ -72,6 +87,7 @@ def example(value: int) -> int:
 - `kind`
 - `function`
 - `condition`
+  callable 名または例外型名のような導出ラベルです。
 - `details`
 - `location`
 - `inputs`

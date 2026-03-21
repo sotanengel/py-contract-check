@@ -30,12 +30,29 @@ from python_contracts_rs import (
 )
 
 
+def divisor_is_not_zero(divisor: int) -> bool:
+    return divisor != 0
+
+
+def quotient_matches_dividend(result: int, dividend: int, divisor: int) -> bool:
+    return result * divisor == dividend
+
+
+def value_is_positive(value: int) -> bool:
+    return value > 0
+
+
+def result_is_incremented(result: int, value: int) -> bool:
+    return result == value + 1
+
+
+def balance_is_non_negative(self: "Wallet") -> bool:
+    return self.balance >= 0
+
+
 @contract(
-    pre("divisor != 0", lambda divisor: divisor != 0),
-    post(
-        "result * divisor == dividend",
-        lambda result, dividend, divisor: result * divisor == dividend,
-    ),
+    pre(divisor_is_not_zero),
+    post(quotient_matches_dividend),
     raises(ZeroDivisionError),
     pure(),
 )
@@ -46,8 +63,8 @@ def divide(dividend: int, divisor: int) -> int:
 
 
 @contract(
-    pre("value > 0", lambda value: value > 0),
-    post("result == value + 1", lambda result, value: result == value + 1),
+    pre(value_is_positive),
+    post(result_is_incremented),
 )
 async def async_increment(value: int) -> int:
     await asyncio.sleep(0)
@@ -55,7 +72,7 @@ async def async_increment(value: int) -> int:
 
 
 @invariant_class(
-    invariant("self.balance >= 0", lambda self: self.balance >= 0),
+    invariant(balance_is_non_negative),
 )
 class Wallet:
     def __init__(self, balance: int) -> None:
@@ -79,7 +96,8 @@ assert asyncio.run(async_increment(2)) == 3
 - 契約は sync / async 関数の両方で有効です
 - `PYTHON_CONTRACTS_RS=0` で実行時に無効化できます
 - 契約違反は `ContractViolationError` として送出され、`to_dict()` / `to_json()` で構造化出力できます
-- 条項ごとの補足 `message` は持たず、条件式そのものを仕様として扱います
+- `pre(...)` / `post(...)` / `invariant(...)` / `error(...)` は callable を受け取り、手書きの条件文字列は受け取りません
+- `condition` には callable 名または例外型名のような導出ラベルが入ります
 
 ## 提供機能
 

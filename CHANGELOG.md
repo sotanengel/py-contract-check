@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0 - 2026-03-22
+
+- Python の `pre(...)` / `post(...)` / `invariant(...)` / `error(...)` から手書きの条件文字列引数を削除
+- 構造化出力の `condition` を callable 名または例外型名ベースの導出ラベルへ統一
+- README / docs / examples / tests を callable-only API に更新
+
+## 0.2.0 - 2026-03-22
+
+- 契約条項の補足 `message` を削除
+- PyPI へのリリース導線を整備
+- dependabot と PyO3 0.28 対応を反映
+
 ## 0.1.0 - 2026-03-22
 
 - Python 公開 API `python_contracts_rs` を追加

@@ -51,51 +51,35 @@ class ContractViolationError(AssertionError):
 
 
 def pre(
-    condition_or_predicate: Union[str, Predicate],
-    predicate: Optional[Predicate] = None,
+    predicate: Predicate,
 ) -> _ClauseSpec:
-    condition, checker = _normalize_boolean_clause(condition_or_predicate, predicate)
+    condition, checker = _normalize_boolean_clause(predicate)
     return _clause("precondition", condition, checker)
 
 
 def post(
-    condition_or_predicate: Union[str, Predicate],
-    predicate: Optional[Predicate] = None,
+    predicate: Predicate,
 ) -> _ClauseSpec:
-    condition, checker = _normalize_boolean_clause(condition_or_predicate, predicate)
+    condition, checker = _normalize_boolean_clause(predicate)
     return _clause("postcondition", condition, checker)
 
 
 def invariant(
-    condition_or_predicate: Union[str, Predicate],
-    predicate: Optional[Predicate] = None,
+    predicate: Predicate,
 ) -> _ClauseSpec:
-    condition, checker = _normalize_boolean_clause(condition_or_predicate, predicate)
+    condition, checker = _normalize_boolean_clause(predicate)
     return _clause("invariant", condition, checker)
 
 
 def error(
-    condition_or_matcher: Union[str, ExceptionMatcher, ExceptionSpec],
-    matcher: Optional[Union[ExceptionMatcher, ExceptionSpec]] = None,
+    matcher_or_exceptions: Union[ExceptionMatcher, ExceptionSpec],
 ) -> _ClauseSpec:
-    if matcher is None and _is_exception_spec(condition_or_matcher):
-        exceptions = _normalize_exceptions(cast(ExceptionSpec, condition_or_matcher))
+    if _is_exception_spec(matcher_or_exceptions):
+        exceptions = _normalize_exceptions(cast(ExceptionSpec, matcher_or_exceptions))
         condition = " or ".join(exception.__name__ for exception in exceptions)
         return _clause("error", condition, _exception_matcher(exceptions))
 
-    if matcher is not None and _is_exception_spec(matcher):
-        exceptions = _normalize_exceptions(cast(ExceptionSpec, matcher))
-        return _clause(
-            "error",
-            str(condition_or_matcher),
-            _exception_matcher(exceptions),
-        )
-
-    callable_matcher = matcher if callable(matcher) and not _is_exception_spec(matcher) else None
-    condition, checker = _normalize_boolean_clause(
-        condition_or_matcher,
-        cast(Optional[Callable[..., bool]], callable_matcher),
-    )
+    condition, checker = _normalize_boolean_clause(cast(ExceptionMatcher, matcher_or_exceptions))
     return _clause("error", condition, checker)
 
 
@@ -477,21 +461,12 @@ def _require_invariant_clause(clause: _ClauseSpec) -> _ClauseSpec:
 
 
 def _normalize_boolean_clause(
-    condition_or_predicate: Union[str, Predicate, ExceptionMatcher, ExceptionSpec],
-    predicate: Optional[Callable[..., bool]],
+    predicate: Callable[..., bool],
 ) -> Tuple[str, Callable[..., bool]]:
-    if (
-        predicate is None
-        and callable(condition_or_predicate)
-        and not _is_exception_spec(condition_or_predicate)
-    ):
-        checker = cast(Callable[..., bool], condition_or_predicate)
-        return _callable_label(checker), checker
+    if callable(predicate) and not _is_exception_spec(predicate):
+        return _callable_label(predicate), predicate
 
-    if isinstance(condition_or_predicate, str) and predicate is not None:
-        return condition_or_predicate, predicate
-
-    raise TypeError("条件文字列とcallableの組、またはcallable単体を渡してください")
+    raise TypeError("callable を渡してください")
 
 
 def _callable_label(predicate: Callable[..., bool]) -> str:

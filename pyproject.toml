@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "contract-check"
-version = "0.2.0"
+version = "0.3.0"
 description = "Design-by-contract library for Python, implemented in Rust."
 readme = "README.md"
 requires-python = ">=3.9"

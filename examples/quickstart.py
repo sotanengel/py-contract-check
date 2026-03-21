@@ -12,12 +12,29 @@ from python_contracts_rs import (
 )
 
 
+def divisor_is_not_zero(divisor: int) -> bool:
+    return divisor != 0
+
+
+def quotient_matches_dividend(result: int, dividend: int, divisor: int) -> bool:
+    return result * divisor == dividend
+
+
+def value_is_positive(value: int) -> bool:
+    return value > 0
+
+
+def result_is_incremented(result: int, value: int) -> bool:
+    return result == value + 1
+
+
+def remaining_is_non_negative(self: "Budget") -> bool:
+    return self.remaining >= 0
+
+
 @contract(
-    pre("divisor != 0", lambda divisor: divisor != 0),
-    post(
-        "result * divisor == dividend",
-        lambda result, dividend, divisor: result * divisor == dividend,
-    ),
+    pre(divisor_is_not_zero),
+    post(quotient_matches_dividend),
     raises(ZeroDivisionError),
     pure(),
 )
@@ -28,8 +45,8 @@ def divide(dividend: int, divisor: int) -> int:
 
 
 @contract(
-    pre("value > 0", lambda value: value > 0),
-    post("result == value + 1", lambda result, value: result == value + 1),
+    pre(value_is_positive),
+    post(result_is_incremented),
 )
 async def async_increment(value: int) -> int:
     await asyncio.sleep(0)
@@ -37,7 +54,7 @@ async def async_increment(value: int) -> int:
 
 
 @invariant_class(
-    invariant("self.remaining >= 0", lambda self: self.remaining >= 0),
+    invariant(remaining_is_non_negative),
 )
 class Budget:
     def __init__(self, remaining: int) -> None:
