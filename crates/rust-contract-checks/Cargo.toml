@@ -1,0 +1,43 @@
+[package]
+name = "rust-contract-checks"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Rust-native design-by-contract helpers inspired by life4/deal."
+readme = "../../README.md"
+keywords = ["contract", "design-by-contract", "validation", "testing"]
+categories = ["development-tools::testing", "rust-patterns"]
+
+[features]
+default = ["macros"]
+macros = ["dep:rust-contract-checks-macros"]
+always-contracts = []
+
+[dependencies]
+rust-contract-checks-macros = { path = "../rust-contract-checks-macros", optional = true }
+
+[dev-dependencies]
+criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
+proptest = "1.6"
+
+[lib]
+name = "rust_contract_checks"
+path = "src/lib.rs"
+
+[[example]]
+name = "quickstart"
+path = "../../examples/quickstart.rs"
+
+[[test]]
+name = "contracts"
+path = "../../tests/contracts.rs"
+
+[[bench]]
+name = "runtime_overhead"
+path = "../../benches/runtime_overhead.rs"
+harness = false
+
+[lints]
+workspace = true
