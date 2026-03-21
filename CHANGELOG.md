@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.2 - 2026-03-22
+
+- release workflow を wheel / sdist 分離構成へ refactor
+- sdist upload failure が GitHub release と wheel 配布を止めないように調整
+
 ## 0.3.1 - 2026-03-22
 
 - release workflow に PyPI token fallback と配布物確認 step を追加

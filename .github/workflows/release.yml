@@ -23,11 +23,16 @@ jobs:
           mkdir -p dist
           maturin sdist --manifest-path bindings/python-contracts-rs/Cargo.toml --out dist
           maturin build --release --manifest-path bindings/python-contracts-rs/Cargo.toml --out dist
-      - name: Upload Python distributions
+      - name: Upload Python wheel
         uses: actions/upload-artifact@v7
         with:
-          name: python-dist
-          path: dist/*
+          name: python-wheel
+          path: dist/*.whl
+      - name: Upload Python sdist
+        uses: actions/upload-artifact@v7
+        with:
+          name: python-sdist
+          path: dist/*.tar.gz
 
   publish-crates:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -47,7 +52,7 @@ jobs:
 
           echo "crates.io publish は別途 macros crate の公開順序を整理してから有効化してください"
 
-  publish-pypi:
+  publish-pypi-wheel:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: package-python
     runs-on: ubuntu-latest
@@ -57,12 +62,12 @@ jobs:
     env:
       PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
     steps:
-      - name: Download Python distributions
+      - name: Download Python wheel
         uses: actions/download-artifact@v8
         with:
-          name: python-dist
+          name: python-wheel
           path: dist
-      - name: Inspect Python distributions
+      - name: Inspect Python wheel
         run: ls -la dist
       - name: Publish to PyPI with token
         if: env.PYPI_API_TOKEN != ''
@@ -82,17 +87,70 @@ jobs:
           attestations: false
           skip-existing: true
 
-  github-release:
+  publish-pypi-sdist:
     if: startsWith(github.ref, 'refs/tags/v')
+    needs: package-python
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    environment: pypi
+    permissions:
+      id-token: write
+    env:
+      PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+    steps:
+      - name: Download Python sdist
+        uses: actions/download-artifact@v8
+        with:
+          name: python-sdist
+          path: dist
+      - name: Inspect Python sdist
+        run: ls -la dist
+      - name: Publish sdist to PyPI with token
+        if: env.PYPI_API_TOKEN != ''
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          packages-dir: dist
+          verbose: true
+          attestations: false
+          skip-existing: true
+      - name: Publish sdist to PyPI with Trusted Publishing
+        if: env.PYPI_API_TOKEN == ''
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+          verbose: true
+          attestations: false
+          skip-existing: true
+
+  github-release:
+    if: >-
+      ${{
+        always()
+        && startsWith(github.ref, 'refs/tags/v')
+        && needs.package-python.result == 'success'
+        && needs.publish-pypi-wheel.result == 'success'
+      }}
     needs:
       - package-python
-      - publish-pypi
+      - publish-pypi-wheel
+      - publish-pypi-sdist
     permissions:
       contents: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - name: Download Python wheel
+        uses: actions/download-artifact@v8
+        with:
+          name: python-wheel
+          path: dist
+      - name: Download Python sdist
+        uses: actions/download-artifact@v8
+        with:
+          name: python-sdist
+          path: dist
       - name: Generate GitHub release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
+          files: dist/*
