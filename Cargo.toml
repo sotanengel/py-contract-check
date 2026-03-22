@@ -8,9 +8,9 @@ default-members = ["crates/rust-contract-checks"]
 resolver = "2"
 
 [workspace.package]
-version = "0.3.7"
+version = "0.3.8"
 edition = "2021"
-license = "MIT"
+license = "Apache-2.0"
 repository = "https://github.com/sotanengel/py-contract-check"
 rust-version = "1.81"
 

@@ -313,7 +313,7 @@ dependencies = [
 
 [[package]]
 name = "python-contracts-rs-bindings"
-version = "0.3.7"
+version = "0.3.8"
 dependencies = [
  "pyo3",
  "rust-contract-checks",
@@ -359,7 +359,7 @@ checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 
 [[package]]
 name = "rust-contract-checks"
-version = "0.3.7"
+version = "0.3.8"
 dependencies = [
  "criterion",
  "rust-contract-checks-macros",
@@ -367,7 +367,7 @@ dependencies = [
 
 [[package]]
 name = "rust-contract-checks-macros"
-version = "0.3.7"
+version = "0.3.8"
 dependencies = [
  "proc-macro2",
  "quote",

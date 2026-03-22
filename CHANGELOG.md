@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.8 - 2026-03-22
+
+- リポジトリの `LICENSE` 実体に合わせて package metadata を `Apache-2.0` へ修正
+- PyPI README の相対リンクを GitHub の絶対 URL に置き換え、`LICENSE` を含むリンク切れを修正
+
 ## 0.3.7 - 2026-03-22
 
 - `maturin` の `include` 設定で `LICENSE` を `sdist` へ明示同梱

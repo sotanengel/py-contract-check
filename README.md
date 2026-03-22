@@ -121,7 +121,7 @@ assert asyncio.run(async_increment(2)) == 3
 | 構造化出力 | `violation_to_dict(...)` / `violation_to_json(...)` | CI や監査ログ向け |
 | SARIF 出力 | `violation_to_sarif_result(...)` / `violations_to_sarif(...)` | GitHub code scanning 連携向け |
 
-詳細は [docs/contracts.md](docs/contracts.md) を参照してください。
+詳細は [docs/contracts.md](https://github.com/sotanengel/py-contract-check/blob/main/docs/contracts.md) を参照してください。
 
 ## リポジトリ構成
 
@@ -144,11 +144,11 @@ assert asyncio.run(async_increment(2)) == 3
 読まないでください。読む順序は次を推奨します。
 
 1. この `README.md`
-2. [docs/contracts.md](docs/contracts.md)
-3. [examples/quickstart.py](examples/quickstart.py)
-4. [tests/python/test_contracts.py](tests/python/test_contracts.py)
-5. [ARCHITECTURE.md](ARCHITECTURE.md)
-6. [AGENTS.md](AGENTS.md)
+2. [docs/contracts.md](https://github.com/sotanengel/py-contract-check/blob/main/docs/contracts.md)
+3. [examples/quickstart.py](https://github.com/sotanengel/py-contract-check/blob/main/examples/quickstart.py)
+4. [tests/python/test_contracts.py](https://github.com/sotanengel/py-contract-check/blob/main/tests/python/test_contracts.py)
+5. [ARCHITECTURE.md](https://github.com/sotanengel/py-contract-check/blob/main/ARCHITECTURE.md)
+6. [AGENTS.md](https://github.com/sotanengel/py-contract-check/blob/main/AGENTS.md)
 
 AI 運用方針:
 
@@ -173,7 +173,7 @@ docker build -t contract-check .
 docker run --rm -it -v "$PWD:/workspace" contract-check make ci
 ```
 
-Dev Container は [`.devcontainer/devcontainer.json`](.devcontainer/devcontainer.json) を参照してください。
+Dev Container は [`.devcontainer/devcontainer.json`](https://github.com/sotanengel/py-contract-check/blob/main/.devcontainer/devcontainer.json) を参照してください。
 
 ## 現状の制限
 
@@ -184,4 +184,4 @@ Dev Container は [`.devcontainer/devcontainer.json`](.devcontainer/devcontainer
 
 ## ライセンス
 
-MIT License。詳細は [LICENSE](LICENSE) を参照してください。
+Apache License 2.0。詳細は [LICENSE](https://github.com/sotanengel/py-contract-check/blob/main/LICENSE) を参照してください。
