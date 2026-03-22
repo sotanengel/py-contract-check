@@ -21,6 +21,8 @@ PyPI wheel 配布対象:
 - `Linux`
 - `Windows`
 
+`macOS` wheel は `universal2` を使い、Apple Silicon と Intel の両方を対象にします。
+
 ```python
 import asyncio
 

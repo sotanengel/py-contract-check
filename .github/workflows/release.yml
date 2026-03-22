@@ -25,6 +25,9 @@ jobs:
         with:
           python-version: "3.11"
       - uses: dtolnay/rust-toolchain@stable
+      - name: Install macOS universal2 target
+        if: matrix.os == 'macos-14'
+        run: rustup target add x86_64-apple-darwin
       - uses: Swatinem/rust-cache@v2
       - name: Install maturin
         run: python -m pip install --upgrade pip maturin
@@ -32,7 +35,11 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          maturin build --release --manifest-path bindings/python-contracts-rs/Cargo.toml --out dist
+          if [ "${{ matrix.os }}" = "macos-14" ]; then
+            maturin build --release --target universal2-apple-darwin --manifest-path bindings/python-contracts-rs/Cargo.toml --out dist
+          else
+            maturin build --release --manifest-path bindings/python-contracts-rs/Cargo.toml --out dist
+          fi
       - name: Upload Python wheel
         uses: actions/upload-artifact@v7
         with:
@@ -79,9 +86,11 @@ jobs:
 
           echo "crates.io publish は別途 macros crate の公開順序を整理してから有効化してください"
 
-  publish-pypi-wheel:
+  publish-pypi:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: package-python
+    needs:
+      - package-python
+      - package-python-sdist
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
@@ -104,45 +113,14 @@ jobs:
         with:
           name: python-wheel-windows
           path: dist
-      - name: Inspect Python wheel
-        run: ls -la dist
-      - name: Publish to PyPI with token
-        if: env.PYPI_API_TOKEN != ''
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          password: ${{ secrets.PYPI_API_TOKEN }}
-          packages-dir: dist
-          verbose: true
-          attestations: false
-          skip-existing: true
-      - name: Publish to PyPI with Trusted Publishing
-        if: env.PYPI_API_TOKEN == ''
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: dist
-          verbose: true
-          attestations: false
-          skip-existing: true
-
-  publish-pypi-sdist:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: package-python-sdist
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    environment: pypi
-    permissions:
-      id-token: write
-    env:
-      PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
-    steps:
       - name: Download Python sdist
         uses: actions/download-artifact@v8
         with:
           name: python-sdist
           path: dist
-      - name: Inspect Python sdist
+      - name: Inspect Python distributions
         run: ls -la dist
-      - name: Publish sdist to PyPI with token
+      - name: Publish distributions to PyPI with token
         if: env.PYPI_API_TOKEN != ''
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
@@ -151,7 +129,7 @@ jobs:
           verbose: true
           attestations: false
           skip-existing: true
-      - name: Publish sdist to PyPI with Trusted Publishing
+      - name: Publish distributions to PyPI with Trusted Publishing
         if: env.PYPI_API_TOKEN == ''
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
@@ -167,13 +145,12 @@ jobs:
         && startsWith(github.ref, 'refs/tags/v')
         && needs.package-python.result == 'success'
         && needs.package-python-sdist.result == 'success'
-        && needs.publish-pypi-wheel.result == 'success'
+        && needs.publish-pypi.result == 'success'
       }}
     needs:
       - package-python
       - package-python-sdist
-      - publish-pypi-wheel
-      - publish-pypi-sdist
+      - publish-pypi
     permissions:
       contents: write
     runs-on: ubuntu-latest

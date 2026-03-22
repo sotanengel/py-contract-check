@@ -5,6 +5,7 @@
 /.mypy_cache
 /.pytest_cache
 /dist
+/dist-*
 /**/__pycache__
 *.pyc
 python/python_contracts_rs/_native*.so

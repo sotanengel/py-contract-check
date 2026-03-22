@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.5 - 2026-03-22
+
+- `macOS` wheel を `universal2` build へ変更し、Apple Silicon と Intel の両方へ対応
+- wheel と sdist の PyPI publish job を統合し、公開競合で sdist が落ちる問題を修正
+
 ## 0.3.4 - 2026-03-22
 
 - release workflow から不安定な `macos-13` matrix を外し、`macOS` / `Linux` / `Windows` wheel 公開を優先
