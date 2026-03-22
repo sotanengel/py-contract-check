@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.4 - 2026-03-22
+
+- release workflow から不安定な `macos-13` matrix を外し、`macOS` / `Linux` / `Windows` wheel 公開を優先
+- `v0.3.3` の公開失敗を踏まえて release 導線を再調整
+
 ## 0.3.3 - 2026-03-22
 
 - ソースツリーに混入した固定 `.so` を除去し、OS 依存バイナリをリポジトリへ含めない構成へ修正

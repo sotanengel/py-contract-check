@@ -15,10 +15,8 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact_name: python-wheel-linux
-          - os: macos-13
-            artifact_name: python-wheel-macos-intel
           - os: macos-14
-            artifact_name: python-wheel-macos-apple-silicon
+            artifact_name: python-wheel-macos
           - os: windows-latest
             artifact_name: python-wheel-windows
     steps:
@@ -96,15 +94,10 @@ jobs:
         with:
           name: python-wheel-linux
           path: dist
-      - name: Download macOS Intel wheel
+      - name: Download macOS wheel
         uses: actions/download-artifact@v8
         with:
-          name: python-wheel-macos-intel
-          path: dist
-      - name: Download macOS Apple Silicon wheel
-        uses: actions/download-artifact@v8
-        with:
-          name: python-wheel-macos-apple-silicon
+          name: python-wheel-macos
           path: dist
       - name: Download Windows wheel
         uses: actions/download-artifact@v8
@@ -190,15 +183,10 @@ jobs:
         with:
           name: python-wheel-linux
           path: dist
-      - name: Download macOS Intel wheel
+      - name: Download macOS wheel
         uses: actions/download-artifact@v8
         with:
-          name: python-wheel-macos-intel
-          path: dist
-      - name: Download macOS Apple Silicon wheel
-        uses: actions/download-artifact@v8
-        with:
-          name: python-wheel-macos-apple-silicon
+          name: python-wheel-macos
           path: dist
       - name: Download Windows wheel
         uses: actions/download-artifact@v8
