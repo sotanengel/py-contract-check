@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.7 - 2026-03-22
+
+- `maturin` の `include` 設定で `LICENSE` を `sdist` へ明示同梱
+- PyPI が `License-File LICENSE` を検証する際に `sdist` を reject する問題を修正
+
 ## 0.3.6 - 2026-03-22
 
 - `sdist` を artifact 経由ではなく publish / release job 内で直接 build する構成へ変更
