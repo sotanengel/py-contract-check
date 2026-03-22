@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.6 - 2026-03-22
+
+- `sdist` を artifact 経由ではなく publish / release job 内で直接 build する構成へ変更
+- `wheel` と `sdist` の公開入力を単純化し、PyPI で source distribution が欠落する問題を修正
+
 ## 0.3.5 - 2026-03-22
 
 - `macOS` wheel を `universal2` build へ変更し、Apple Silicon と Intel の両方へ対応

@@ -45,32 +45,9 @@ jobs:
         with:
           name: ${{ matrix.artifact_name }}
           path: dist/*.whl
-  package-python-sdist:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: Install maturin
-        run: python -m pip install --upgrade pip maturin
-      - name: Build Python sdist
-        run: |
-          mkdir -p dist
-          maturin sdist --manifest-path bindings/python-contracts-rs/Cargo.toml --out dist
-      - name: Upload Python sdist
-        uses: actions/upload-artifact@v7
-        with:
-          name: python-sdist
-          path: dist/*.tar.gz
-
   publish-crates:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs:
-      - package-python
-      - package-python-sdist
+    needs: package-python
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -88,9 +65,7 @@ jobs:
 
   publish-pypi:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs:
-      - package-python
-      - package-python-sdist
+    needs: package-python
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
@@ -98,6 +73,18 @@ jobs:
     env:
       PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
     steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install maturin
+        run: python -m pip install --upgrade pip maturin
+      - name: Build Python sdist
+        run: |
+          mkdir -p dist
+          maturin sdist --manifest-path bindings/python-contracts-rs/Cargo.toml --out dist
       - name: Download Linux wheel
         uses: actions/download-artifact@v8
         with:
@@ -112,11 +99,6 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: python-wheel-windows
-          path: dist
-      - name: Download Python sdist
-        uses: actions/download-artifact@v8
-        with:
-          name: python-sdist
           path: dist
       - name: Inspect Python distributions
         run: ls -la dist
@@ -144,17 +126,27 @@ jobs:
         always()
         && startsWith(github.ref, 'refs/tags/v')
         && needs.package-python.result == 'success'
-        && needs.package-python-sdist.result == 'success'
         && needs.publish-pypi.result == 'success'
       }}
     needs:
       - package-python
-      - package-python-sdist
       - publish-pypi
     permissions:
       contents: write
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install maturin
+        run: python -m pip install --upgrade pip maturin
+      - name: Build Python sdist
+        run: |
+          mkdir -p dist
+          maturin sdist --manifest-path bindings/python-contracts-rs/Cargo.toml --out dist
       - name: Download Linux wheel
         uses: actions/download-artifact@v8
         with:
@@ -169,11 +161,6 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: python-wheel-windows
-          path: dist
-      - name: Download Python sdist
-        uses: actions/download-artifact@v8
-        with:
-          name: python-sdist
           path: dist
       - name: Generate GitHub release
         uses: softprops/action-gh-release@v2
