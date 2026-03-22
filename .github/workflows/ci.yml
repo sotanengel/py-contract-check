@@ -6,7 +6,17 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            venv_python: .venv/bin/python
+          - os: macos-latest
+            venv_python: .venv/bin/python
+          - os: windows-latest
+            venv_python: .venv/Scripts/python.exe
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -14,5 +24,34 @@ jobs:
           python-version: "3.11"
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: make setup
-      - run: make ci
+      - name: Set up development environment
+        shell: bash
+        run: |
+          python -m venv .venv
+          "${{ matrix.venv_python }}" -m pip install --upgrade pip
+          "${{ matrix.venv_python }}" -m pip install -e ".[dev]"
+          cargo fetch
+      - name: Format checks
+        shell: bash
+        run: |
+          cargo fmt --all --check
+          "${{ matrix.venv_python }}" -m ruff format --check python tests/python
+      - name: Lint
+        shell: bash
+        run: |
+          cargo clippy --workspace --all-targets --all-features -- -D warnings
+          "${{ matrix.venv_python }}" -m ruff check python tests/python
+      - name: Typecheck
+        shell: bash
+        run: "${{ matrix.venv_python }}" -m mypy python
+      - name: Test
+        shell: bash
+        run: |
+          cargo test --workspace --all-features --all-targets
+          cargo test -p rust-contract-checks --doc
+          "${{ matrix.venv_python }}" -m pytest tests/python
+      - name: Examples
+        shell: bash
+        run: |
+          "${{ matrix.venv_python }}" examples/quickstart.py
+          cargo run -p rust-contract-checks --example quickstart

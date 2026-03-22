@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.3 - 2026-03-22
+
+- ソースツリーに混入した固定 `.so` を除去し、OS 依存バイナリをリポジトリへ含めない構成へ修正
+- `pytest` をインストール済み拡張モジュール前提に変更し、開発時に in-tree ネイティブ成果物へ依存しないように調整
+- CI / release workflow を `macOS` / `Linux` / `Windows` の wheel 配布へ拡張
+
 ## 0.3.2 - 2026-03-22
 
 - release workflow を wheel / sdist 分離構成へ refactor

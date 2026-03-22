@@ -8,7 +8,19 @@ on:
 
 jobs:
   package-python:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_name: python-wheel-linux
+          - os: macos-13
+            artifact_name: python-wheel-macos-intel
+          - os: macos-14
+            artifact_name: python-wheel-macos-apple-silicon
+          - os: windows-latest
+            artifact_name: python-wheel-windows
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -19,15 +31,30 @@ jobs:
       - name: Install maturin
         run: python -m pip install --upgrade pip maturin
       - name: Build Python distributions
+        shell: bash
         run: |
           mkdir -p dist
-          maturin sdist --manifest-path bindings/python-contracts-rs/Cargo.toml --out dist
           maturin build --release --manifest-path bindings/python-contracts-rs/Cargo.toml --out dist
       - name: Upload Python wheel
         uses: actions/upload-artifact@v7
         with:
-          name: python-wheel
+          name: ${{ matrix.artifact_name }}
           path: dist/*.whl
+  package-python-sdist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install maturin
+        run: python -m pip install --upgrade pip maturin
+      - name: Build Python sdist
+        run: |
+          mkdir -p dist
+          maturin sdist --manifest-path bindings/python-contracts-rs/Cargo.toml --out dist
       - name: Upload Python sdist
         uses: actions/upload-artifact@v7
         with:
@@ -36,7 +63,9 @@ jobs:
 
   publish-crates:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: package-python
+    needs:
+      - package-python
+      - package-python-sdist
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -62,10 +91,25 @@ jobs:
     env:
       PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
     steps:
-      - name: Download Python wheel
+      - name: Download Linux wheel
         uses: actions/download-artifact@v8
         with:
-          name: python-wheel
+          name: python-wheel-linux
+          path: dist
+      - name: Download macOS Intel wheel
+        uses: actions/download-artifact@v8
+        with:
+          name: python-wheel-macos-intel
+          path: dist
+      - name: Download macOS Apple Silicon wheel
+        uses: actions/download-artifact@v8
+        with:
+          name: python-wheel-macos-apple-silicon
+          path: dist
+      - name: Download Windows wheel
+        uses: actions/download-artifact@v8
+        with:
+          name: python-wheel-windows
           path: dist
       - name: Inspect Python wheel
         run: ls -la dist
@@ -89,7 +133,7 @@ jobs:
 
   publish-pypi-sdist:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: package-python
+    needs: package-python-sdist
     runs-on: ubuntu-latest
     continue-on-error: true
     environment: pypi
@@ -129,20 +173,37 @@ jobs:
         always()
         && startsWith(github.ref, 'refs/tags/v')
         && needs.package-python.result == 'success'
+        && needs.package-python-sdist.result == 'success'
         && needs.publish-pypi-wheel.result == 'success'
       }}
     needs:
       - package-python
+      - package-python-sdist
       - publish-pypi-wheel
       - publish-pypi-sdist
     permissions:
       contents: write
     runs-on: ubuntu-latest
     steps:
-      - name: Download Python wheel
+      - name: Download Linux wheel
         uses: actions/download-artifact@v8
         with:
-          name: python-wheel
+          name: python-wheel-linux
+          path: dist
+      - name: Download macOS Intel wheel
+        uses: actions/download-artifact@v8
+        with:
+          name: python-wheel-macos-intel
+          path: dist
+      - name: Download macOS Apple Silicon wheel
+        uses: actions/download-artifact@v8
+        with:
+          name: python-wheel-macos-apple-silicon
+          path: dist
+      - name: Download Windows wheel
+        uses: actions/download-artifact@v8
+        with:
+          name: python-wheel-windows
           path: dist
       - name: Download Python sdist
         uses: actions/download-artifact@v8

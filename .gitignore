@@ -4,6 +4,10 @@
 /.venv
 /.mypy_cache
 /.pytest_cache
+/dist
 /**/__pycache__
 *.pyc
 python/python_contracts_rs/_native*.so
+python/python_contracts_rs/_native*.pyd
+python/python_contracts_rs/_native*.dll
+python/python_contracts_rs/_native*.dylib

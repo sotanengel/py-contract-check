@@ -10,6 +10,7 @@ MVP では次を優先します。
 - Python から自然に書ける契約 API
 - 例外と契約違反を分離した構造化エラー
 - Python/Rust の両方で回るテストと CI 導線
+- `macOS` / `Linux` / `Windows` へ wheel 配布できる packaging
 
 ## モジュール構成
 

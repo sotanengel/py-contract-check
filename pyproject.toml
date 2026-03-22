@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "contract-check"
-version = "0.3.2"
+version = "0.3.3"
 description = "Design-by-contract library for Python, implemented in Rust."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -39,7 +39,6 @@ module-name = "python_contracts_rs._native"
 features = ["extension-module"]
 
 [tool.pytest.ini_options]
-pythonpath = ["python"]
 testpaths = ["tests/python"]
 
 [tool.ruff]
