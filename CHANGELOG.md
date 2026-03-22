@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.1 - 2026-03-23
+
+- Rewrite the top section of the README in English for PyPI presentation
+- Cut a patch release so the updated README is reflected on PyPI
+
 ## 0.4.0 - 2026-03-23
 
 - 公式 import 名として `contract_check` を追加し、`python_contracts_rs` を後方互換 alias として維持

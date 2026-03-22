@@ -4,24 +4,24 @@
 
 This is a design-by-contract library for Python, implemented in Rust.
 
-`contract-check` は、Python 向けの契約プログラミングライブラリです。公開 API は
-Python の decorator 中心で設計し、内部の構造化違反情報と実行時基盤を Rust で実装します。
-思想面では [`life4/deal`](https://github.com/life4/deal) を参考にしつつ、配布、監査性、
-AI 補助開発、Python/Rust 混成運用を前提に再設計しています。
+`contract-check` is a Python-first design-by-contract library. The public API is built around
+Python decorators, while Rust provides the runtime core and structured violation payloads.
+The project is inspired by [`life4/deal`](https://github.com/life4/deal), but is redesigned for
+distribution, observability, AI-assisted development, and mixed Python/Rust workflows.
 
-## クイックスタート
+## Quick Start
 
 ```bash
 pip install contract-check
 ```
 
-PyPI wheel 配布対象:
+PyPI wheels are published for:
 
 - `macOS`
 - `Linux`
 - `Windows`
 
-`macOS` wheel は `universal2` を使い、Apple Silicon と Intel の両方を対象にします。
+`macOS` wheels use `universal2` to support both Apple Silicon and Intel.
 
 ```python
 from __future__ import annotations
@@ -110,65 +110,65 @@ assert divide(12, 3) == 4
 assert asyncio.run(async_increment(2)) == 3
 ```
 
-配布名と import 名:
+Distribution and import names:
 
-- PyPI distribution 名は `contract-check` です
-- 公式 Python import 名は `contract_check` です
-- 既存の `python_contracts_rs` も後方互換 alias として継続サポートします
-- `python_contracts_rs` を削除する場合は `1.x` より前に silent break しません
+- The PyPI distribution name is `contract-check`
+- The primary Python import name is `contract_check`
+- The legacy `python_contracts_rs` import remains supported as a backwards-compatible alias
+- `python_contracts_rs` will not be silently removed before a future `1.x` migration plan is documented
 
-標準挙動:
+Default behavior:
 
-- 契約は sync / async 関数の両方で有効です
-- `PYTHON_CONTRACTS_RS=0` で実行時に無効化できます
-- 契約違反は `ContractViolationError` として送出され、`code` / `message` / `field_path` / `actual` / `expected` / `contract_phase` / `predicate_name` を含む構造化出力を返せます
-- predicate は `bool` だけでなく `ViolationDetail | None` も返せます
-- `pre(...)` / `post(...)` / `invariant(...)` / `error(...)` は callable を受け取り、手書きの条件文字列は受け取りません
-- `condition` には callable 名または例外型名のような導出ラベルが入ります
+- Contracts work for both sync and async call paths
+- Set `PYTHON_CONTRACTS_RS=0` to disable runtime checks
+- Contract violations are raised as `ContractViolationError` with structured fields such as `code`, `message`, `field_path`, `actual`, `expected`, `contract_phase`, and `predicate_name`
+- Predicates may return either `bool` or `ViolationDetail | None`
+- `pre(...)`, `post(...)`, `invariant(...)`, and `error(...)` accept callables rather than handwritten condition strings
+- `condition` stores a derived label such as a callable name or exception type name
 
-## 提供機能
+## Features
 
-| 機能 | Python API | 補足 |
+| Feature | Python API | Notes |
 | --- | --- | --- |
-| 前提条件 | `pre(...)` | sync / async / async generator の実行前に検証 |
-| 事後条件 | `post(...)` | 戻り値は `result` / `ret` で参照 |
-| 不変条件 | `invariant(...)` / `@invariant_class(...)` | `policy=` / `cost=` と `@read_only` / `@mutating` で粒度制御 |
-| 期待例外 | `raises(...)` / `error(...)` | 許可された例外のみ通過 |
-| 純粋性 | `pure(...)` | 現段階では意図表明 |
-| panic 方針 | `panic_free(...)` | 予期しない例外を契約違反へ変換 |
-| rich violation | `ViolationDetail` | API 応答やログへ流しやすい詳細 payload |
-| typed predicates | `PrePredicate` / `PostPredicate` / `InvariantPredicate` / `ErrorPredicate` | `Protocol` と mypy / pyright を前提にした型支援 |
-| テスト支援 | `collect_violations(...)` / `assert_valid(...)` / `validate_payload(...)` | decorator を通さず predicate を直接検証 |
-| runtime 制御 | `contract_runtime(...)` | `debug_only` / `expensive` invariant の有効化を文脈単位で切替 |
-| 契約メタデータ | `get_contract_metadata(...)` | ドキュメント生成やテスト補助向け |
-| 構造化出力 | `violation_to_dict(...)` / `violation_to_json(...)` | CI や監査ログ向け |
-| SARIF 出力 | `violation_to_sarif_result(...)` / `violations_to_sarif(...)` | GitHub code scanning 連携向け |
+- Preconditions | `pre(...)` | Validated before sync, async, and async-generator execution |
+- Postconditions | `post(...)` | Return values are available as `result` or `ret` |
+- Invariants | `invariant(...)` / `@invariant_class(...)` | Controlled with `policy=`, `cost=`, `@read_only`, and `@mutating` |
+- Expected exceptions | `raises(...)` / `error(...)` | Only declared exceptions are allowed through |
+- Purity marker | `pure(...)` | Currently an intent marker |
+- Panic policy | `panic_free(...)` | Converts unexpected exceptions into contract violations |
+- Rich violations | `ViolationDetail` | Structured payloads for APIs and logs |
+- Typed predicates | `PrePredicate` / `PostPredicate` / `InvariantPredicate` / `ErrorPredicate` | Typing support for `Protocol`, mypy, and pyright |
+- Testing helpers | `collect_violations(...)` / `assert_valid(...)` / `validate_payload(...)` | Evaluate predicates directly without decorators |
+- Runtime controls | `contract_runtime(...)` | Toggle `debug_only` and `expensive` invariants per context |
+- Contract metadata | `get_contract_metadata(...)` | Useful for documentation and test helpers |
+- Structured output | `violation_to_dict(...)` / `violation_to_json(...)` | CI- and audit-log-friendly output |
+- SARIF output | `violation_to_sarif_result(...)` / `violations_to_sarif(...)` | Integration with GitHub code scanning |
 
-詳細ガイド:
+Further reading:
 
 - [docs/contracts.md](https://github.com/sotanengel/py-contract-check/blob/main/docs/contracts.md)
 - [docs/typed-predicates.md](https://github.com/sotanengel/py-contract-check/blob/main/docs/typed-predicates.md)
 - [docs/invariant-policies.md](https://github.com/sotanengel/py-contract-check/blob/main/docs/invariant-policies.md)
 - [docs/testing.md](https://github.com/sotanengel/py-contract-check/blob/main/docs/testing.md)
 
-## リポジトリ構成
+## Repository Layout
 
 - `python/python_contracts_rs/`
-  Python 公開 API と decorator 実装です。
+  Python public API and decorator implementation.
 - `python/contract_check/`
-  公式 import alias です。既存の `python_contracts_rs` を再エクスポートします。
+  Primary import alias that re-exports the legacy `python_contracts_rs` package.
 - `bindings/python-contracts-rs/`
-  PyO3 ベースの Python/Rust バインディングです。
+  PyO3-based Python/Rust bindings.
 - `crates/rust-contract-checks/`
-  Rust 側の低レベルな契約種別・違反情報・設定判定です。
+  Rust core for contract kinds, violation reporting, and runtime config.
 - `examples/quickstart.py`
-  Python 利用者向けの最短例です。
+  Minimal Python user example.
 - `examples/typed_predicates.py`
-  typed predicate と `Protocol` を含む型支援サンプルです。
+  Typed predicate and `Protocol` example.
 - `tests/python/test_contracts.py`
-  Python 公開 API の統合テストです。
+  Python API integration tests.
 - `tests/contracts.rs`
-  Rust コアの回帰テストです。
+  Rust core regression tests.
 
 ## 生成 AI 向け案内
 
