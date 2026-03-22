@@ -3,16 +3,37 @@
 `contract-check` は Python decorator と Rust 製の構造化違反データを組み合わせて契約を表現します。
 sync / async 関数、async generator、async context manager を同じ記法で扱えます。
 
-配布名は `contract-check`、Python import 名は `python_contracts_rs` です。
+配布名は `contract-check`、公式 import 名は `contract_check` です。既存の
+`python_contracts_rs` も後方互換 alias として利用できます。
 
 ## 基本記法
 
 ```python
-from python_contracts_rs import contract, error, invariant, panic_free, post, pre, raises
+from __future__ import annotations
+
+from contract_check import (
+    ViolationDetail,
+    contract,
+    error,
+    invariant,
+    invariant_class,
+    panic_free,
+    post,
+    pre,
+    read_only,
+)
 
 
-def positive_value(value: int) -> bool:
-    return value > 0
+def positive_value(value: int) -> ViolationDetail | None:
+    if value > 0:
+        return None
+    return ViolationDetail(
+        code="value.non_positive",
+        message="value must be positive",
+        field_path="/value",
+        actual=value,
+        expected="value > 0",
+    )
 
 
 def result_not_below_input(result: int, value: int) -> bool:
@@ -36,33 +57,47 @@ def is_value_error(exc: Exception) -> bool:
 )
 def example(value: int) -> int:
     return value
+
+
+@invariant_class(
+    invariant(balance_is_non_negative, policy="mutating_only"),
+)
+class Wallet:
+    def __init__(self, balance: int) -> None:
+        self.balance = balance
+
+    def debit(self, amount: int) -> None:
+        self.balance -= amount
+
+    @read_only
+    def current_balance(self) -> int:
+        return self.balance
 ```
 
 ## `pre(...)`
 
 - 関数実行前にすべて評価します。
 - 偽になった時点で `ContractViolationError` を送出します。
-- `pre(...)` は predicate callable だけを受け取ります。
+- predicate は `bool` だけでなく `ViolationDetail | None` を返せます。
 
 ## `post(...)`
 
 - 正常終了時だけ評価します。
 - 戻り値は `result` または `ret` で参照できます。
-- 入力との関係を表現したいときに使います。
-- async generator では yield ごとの値に対して評価します。
-- async context manager では `__aenter__()` が返した値に対して評価します。
+- async generator では yield ごとの値、async context manager では `__aenter__()` の戻り値を検証します。
 
 ## `invariant(...)`
 
 - 関数またはメソッドの前後で評価します。
-- 例外送出時でも、ラッパーを抜ける前に再評価します。
+- `policy=` に `always` / `mutating_only` / `read_only_opt_out` / `debug_only` を指定できます。
+- `cost=` に `cheap` / `expensive` を指定できます。
 
 ## `@invariant_class(...)`
 
 - class 全体に invariant を注入する decorator です。
 - デフォルトでは public instance method と `__init__` をラップします。
-- `include_private=True` を指定すると `_private` な method にも適用できます。
-- `staticmethod` / `classmethod` / `property` / dunder method は既定では対象外です。
+- `include_private=True`、`include_dunder=True`、`include=...`、`exclude=...` で適用対象を制御できます。
+- `@read_only` と `@mutating` を使うと、invariant policy の判定を明示できます。
 
 ## `raises(...)` / `error(...)`
 
@@ -70,48 +105,52 @@ def example(value: int) -> int:
 - `error(is_value_error)` のように predicate callable で細かく書くこともできます。
 - 宣言した例外に一致しない場合は `kind="error"` の契約違反になります。
 
-## `pure(...)`
+## rich violation
 
-- 現段階では意図表明です。
-- Python API では lint や静的解析連携のためのメタデータとして残します。
+`ContractViolationError` は `_native.ContractViolation` を保持しつつ、次の詳細 payload を
+`to_dict()` / `to_json()` / SARIF へ反映します。
 
-## `panic_free(...)`
+- `code`
+- `message`
+- `field_path`
+- `actual`
+- `expected`
+- `subject_id`
+- `subject_type`
+- `contract_phase`
+- `predicate_name`
+- `predicate_module`
+- `severity`
+- `hint`
+- `causes`
 
-- 宣言済み例外に一致しない予期しない例外を `kind="panic"` の契約違反へ変換します。
-- Python での「panic」は、ここでは想定外例外のラップを意味します。
+## typed predicates
 
-## 契約違反の扱い
+- `PrePredicate`
+- `PostPredicate`
+- `InvariantPredicate`
+- `ErrorPredicate`
+- `ValidationResult`
 
-`ContractViolationError` は `_native.ContractViolation` を保持します。参照できる主な情報:
+代表例は [docs/typed-predicates.md](https://github.com/sotanengel/py-contract-check/blob/main/docs/typed-predicates.md) を参照してください。
 
-- `kind`
-- `function`
-- `condition`
-  callable 名または例外型名のような導出ラベルです。
-- `details`
-- `location`
-- `inputs`
+## testing API
 
-`ContractViolation.to_log_line()` は監査ログや CI ログに流しやすい単一行フォーマットを返します。
+- `collect_violations(...)`
+- `assert_valid(...)`
+- `validate_payload(...)`
 
-構造化出力:
-
-- `violation_to_dict(...)` / `violation_to_json(...)`
-- `metadata_to_dict(...)` / `metadata_to_json(...)`
-- `ContractViolationError.to_dict()` / `ContractViolationError.to_json()`
-
-SARIF 出力:
-
-- `violation_to_sarif_result(...)`
-- `violations_to_sarif(...)`
-- `violations_to_sarif_json(...)`
+decorator を通さず predicate を直接検証できます。詳細は
+[docs/testing.md](https://github.com/sotanengel/py-contract-check/blob/main/docs/testing.md) を参照してください。
 
 ## 実行時設定
 
-- `PYTHON_CONTRACTS_RS=0|false|off` で契約チェックを停止できます
-- 旧環境変数 `RUST_CONTRACT_CHECKS` も後方互換として解釈します
+- `PYTHON_CONTRACTS_RS=0|false|off` で契約チェックを停止できます。
+- 旧環境変数 `RUST_CONTRACT_CHECKS` も後方互換として解釈します。
+- `contract_runtime(debug_invariants=..., expensive_invariants=...)` で invariant policy を文脈単位に切り替えられます。
 
-## 将来拡張
+## 関連ガイド
 
-- tracing backend
-- `pure(...)` / `panic_free(...)` の lint 化
+- [typed predicates](https://github.com/sotanengel/py-contract-check/blob/main/docs/typed-predicates.md)
+- [invariant policies](https://github.com/sotanengel/py-contract-check/blob/main/docs/invariant-policies.md)
+- [testing](https://github.com/sotanengel/py-contract-check/blob/main/docs/testing.md)

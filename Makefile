@@ -20,7 +20,7 @@ lint:
 	$(VENV_PYTHON) -m ruff check python tests/python
 
 typecheck:
-	$(VENV_PYTHON) -m mypy python
+	$(VENV_PYTHON) -m mypy python examples/typed_predicates.py
 
 test-rust:
 	cargo test --workspace --all-features --all-targets
@@ -36,6 +36,7 @@ doc:
 
 examples:
 	$(VENV_PYTHON) examples/quickstart.py
+	$(VENV_PYTHON) examples/typed_predicates.py
 	cargo run -p rust-contract-checks --example quickstart
 
 bench:

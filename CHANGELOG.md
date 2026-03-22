@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0 - 2026-03-23
+
+- 公式 import 名として `contract_check` を追加し、`python_contracts_rs` を後方互換 alias として維持
+- `ViolationDetail` と typed predicate を追加し、`code` / `message` / `field_path` / `actual` / `expected` などの rich violation payload を JSON / SARIF へ反映
+- `invariant(..., policy=..., cost=...)`、`@read_only` / `@mutating`、`contract_runtime(...)` を追加し invariant の評価粒度を制御可能に変更
+- `collect_violations(...)` / `assert_valid(...)` / `validate_payload(...)` を追加し、predicate を直接評価する testing API を整備
+- README / docs / examples / CI / mypy 導線を `contract_check` と typed predicate 前提に更新
+
 ## 0.3.8 - 2026-03-22
 
 - リポジトリの `LICENSE` 実体に合わせて package metadata を `Apache-2.0` へ修正

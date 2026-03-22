@@ -1,7 +1,10 @@
+from __future__ import annotations
+
 import asyncio
 
-from python_contracts_rs import (
+from contract_check import (
     ContractViolationError,
+    ViolationDetail,
     contract,
     invariant,
     invariant_class,
@@ -9,6 +12,7 @@ from python_contracts_rs import (
     pre,
     pure,
     raises,
+    read_only,
 )
 
 
@@ -20,8 +24,17 @@ def quotient_matches_dividend(result: int, dividend: int, divisor: int) -> bool:
     return result * divisor == dividend
 
 
-def value_is_positive(value: int) -> bool:
-    return value > 0
+def value_is_positive(value: int) -> ViolationDetail | None:
+    if value > 0:
+        return None
+
+    return ViolationDetail(
+        code="value.non_positive",
+        message="value must be positive",
+        field_path="/value",
+        actual=value,
+        expected="value > 0",
+    )
 
 
 def result_is_incremented(result: int, value: int) -> bool:
@@ -54,7 +67,7 @@ async def async_increment(value: int) -> int:
 
 
 @invariant_class(
-    invariant(remaining_is_non_negative),
+    invariant(remaining_is_non_negative, policy="mutating_only"),
 )
 class Budget:
     def __init__(self, remaining: int) -> None:
@@ -70,6 +83,10 @@ class Budget:
             raise ValueError("overdraft")
         self.remaining -= amount
 
+    @read_only
+    def remaining_balance(self) -> int:
+        return self.remaining
+
 
 def main() -> None:
     assert divide(12, 3) == 4
@@ -77,7 +94,7 @@ def main() -> None:
 
     budget = Budget(10)
     budget.spend(3)
-    assert budget.remaining == 7
+    assert budget.remaining_balance() == 7
 
     try:
         asyncio.run(async_increment(0))

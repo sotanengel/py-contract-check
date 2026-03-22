@@ -217,7 +217,7 @@ impl ContractMetadata {
     }
 }
 
-#[pyclass(module = "python_contracts_rs._native", frozen)]
+#[pyclass(module = "python_contracts_rs._native", frozen, dict)]
 pub struct ContractViolation {
     function: String,
     kind: String,

@@ -1,13 +1,19 @@
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import functools
 import inspect
 import json
-from dataclasses import dataclass
+import os
+import types
+from dataclasses import dataclass, replace
 from typing import (
     Any,
     Callable,
+    Collection,
     Dict,
+    Iterator,
     Mapping,
     Optional,
     Sequence,
@@ -16,59 +22,207 @@ from typing import (
     TypeVar,
     Union,
     cast,
+    get_args,
+    get_origin,
+    get_type_hints,
 )
 
 from . import _native
+from .models import ViolationCause, ViolationDetail, violation_detail_to_dict
 
-Predicate = Callable[..., bool]
-ExceptionMatcher = Callable[..., bool]
+Predicate = Callable[..., Any]
+ExceptionMatcher = Callable[..., Any]
 ExceptionSpec = Union[Type[Exception], Tuple[Type[Exception], ...]]
 ClassType = TypeVar("ClassType", bound=type[Any])
+_VIOLATION_DETAIL_ATTRIBUTE = "__contract_violation_detail__"
+_METHOD_ROLE_ATTRIBUTE = "__contract_method_role__"
+_DEBUG_INVARIANTS_ENV_VAR = "PYTHON_CONTRACTS_RS_DEBUG_INVARIANTS"
+_EXPENSIVE_INVARIANTS_ENV_VAR = "PYTHON_CONTRACTS_RS_EXPENSIVE_INVARIANTS"
+_READ_ONLY_PREFIXES = ("get_", "list_", "peek_", "fetch_", "is_", "has_")
+_ALLOWED_INVARIANT_POLICIES = frozenset(
+    {"always", "mutating_only", "read_only_opt_out", "debug_only"}
+)
+_ALLOWED_INVARIANT_COSTS = frozenset({"cheap", "expensive"})
+_VIOLATION_DETAILS_BY_ID: Dict[int, ViolationDetail] = {}
 
 
 @dataclass(frozen=True)
 class _ClauseSpec:
     kind: str
     condition: str
-    checker: Optional[Callable[..., bool]]
+    checker: Optional[Callable[..., Any]]
     native: _native.ContractClause
+    predicate_name: str | None = None
+    predicate_module: str | None = None
+    allow_none_success: bool = False
+    policy: str = "always"
+    cost: str = "cheap"
+
+
+@dataclass(frozen=True)
+class _PredicateOutcome:
+    matched: bool
+    detail: ViolationDetail | None = None
+
+
+@dataclass(frozen=True)
+class ContractRuntimeSettings:
+    debug_invariants: bool = False
+    expensive_invariants: bool = True
+
+
+_RUNTIME_SETTINGS: contextvars.ContextVar[ContractRuntimeSettings | None] = contextvars.ContextVar(
+    "python_contracts_rs_runtime_settings",
+    default=None,
+)
 
 
 class ContractViolationError(AssertionError):
-    def __init__(self, violation: _native.ContractViolation) -> None:
+    _DETAIL_FIELDS = frozenset(
+        {
+            "code",
+            "message",
+            "field_path",
+            "actual",
+            "expected",
+            "subject_id",
+            "subject_type",
+            "contract_phase",
+            "predicate_name",
+            "predicate_module",
+            "severity",
+            "hint",
+            "causes",
+        }
+    )
+
+    def __init__(
+        self,
+        violation: _native.ContractViolation,
+        detail: ViolationDetail | None = None,
+    ) -> None:
         self.violation = violation
+        self._detail = _resolve_violation_detail(violation, detail)
+        _attach_violation_detail(violation, self._detail)
         super().__init__(str(violation))
 
     @property
     def kind(self) -> str:
         return self.violation.kind
 
+    @property
+    def detail(self) -> ViolationDetail:
+        return _resolve_violation_detail(self.violation, self._detail)
+
+    def __getattr__(self, name: str) -> Any:
+        if name in self._DETAIL_FIELDS:
+            return getattr(self.detail, name)
+        raise AttributeError(name)
+
     def to_dict(self) -> Dict[str, Any]:
-        return violation_to_dict(self.violation)
+        return violation_to_dict(self)
 
     def to_json(self) -> str:
-        return violation_to_json(self.violation)
+        return violation_to_json(self)
+
+
+def get_contract_runtime_settings() -> ContractRuntimeSettings:
+    current = _RUNTIME_SETTINGS.get()
+    if current is not None:
+        return current
+
+    return ContractRuntimeSettings(
+        debug_invariants=_env_flag(_DEBUG_INVARIANTS_ENV_VAR, default=False),
+        expensive_invariants=_env_flag(_EXPENSIVE_INVARIANTS_ENV_VAR, default=True),
+    )
+
+
+@contextlib.contextmanager
+def contract_runtime(
+    *,
+    debug_invariants: bool | None = None,
+    expensive_invariants: bool | None = None,
+) -> Iterator[None]:
+    current = get_contract_runtime_settings()
+    token = _RUNTIME_SETTINGS.set(
+        ContractRuntimeSettings(
+            debug_invariants=current.debug_invariants
+            if debug_invariants is None
+            else debug_invariants,
+            expensive_invariants=current.expensive_invariants
+            if expensive_invariants is None
+            else expensive_invariants,
+        )
+    )
+    try:
+        yield
+    finally:
+        _RUNTIME_SETTINGS.reset(token)
+
+
+def mutating(function: Callable[..., Any]) -> Callable[..., Any]:
+    setattr(function, _METHOD_ROLE_ATTRIBUTE, "mutating")
+    return function
+
+
+def read_only(function: Callable[..., Any]) -> Callable[..., Any]:
+    setattr(function, _METHOD_ROLE_ATTRIBUTE, "read_only")
+    return function
 
 
 def pre(
     predicate: Predicate,
 ) -> _ClauseSpec:
-    condition, checker = _normalize_boolean_clause(predicate)
-    return _clause("precondition", condition, checker)
+    condition, checker, predicate_name, predicate_module, allow_none_success = (
+        _normalize_boolean_clause(predicate)
+    )
+    return _clause(
+        "precondition",
+        condition,
+        checker,
+        predicate_name=predicate_name,
+        predicate_module=predicate_module,
+        allow_none_success=allow_none_success,
+    )
 
 
 def post(
     predicate: Predicate,
 ) -> _ClauseSpec:
-    condition, checker = _normalize_boolean_clause(predicate)
-    return _clause("postcondition", condition, checker)
+    condition, checker, predicate_name, predicate_module, allow_none_success = (
+        _normalize_boolean_clause(predicate)
+    )
+    return _clause(
+        "postcondition",
+        condition,
+        checker,
+        predicate_name=predicate_name,
+        predicate_module=predicate_module,
+        allow_none_success=allow_none_success,
+    )
 
 
 def invariant(
     predicate: Predicate,
+    *,
+    policy: str = "always",
+    cost: str = "cheap",
 ) -> _ClauseSpec:
-    condition, checker = _normalize_boolean_clause(predicate)
-    return _clause("invariant", condition, checker)
+    normalized_policy = _normalize_invariant_policy(policy)
+    normalized_cost = _normalize_invariant_cost(cost)
+    condition, checker, predicate_name, predicate_module, allow_none_success = (
+        _normalize_boolean_clause(predicate)
+    )
+    return _clause(
+        "invariant",
+        condition,
+        checker,
+        predicate_name=predicate_name,
+        predicate_module=predicate_module,
+        allow_none_success=allow_none_success,
+        policy=normalized_policy,
+        cost=normalized_cost,
+    )
 
 
 def error(
@@ -77,10 +231,25 @@ def error(
     if _is_exception_spec(matcher_or_exceptions):
         exceptions = _normalize_exceptions(cast(ExceptionSpec, matcher_or_exceptions))
         condition = " or ".join(exception.__name__ for exception in exceptions)
-        return _clause("error", condition, _exception_matcher(exceptions))
+        return _clause(
+            "error",
+            condition,
+            _exception_matcher(exceptions),
+            predicate_name=condition,
+            predicate_module=None,
+        )
 
-    condition, checker = _normalize_boolean_clause(cast(ExceptionMatcher, matcher_or_exceptions))
-    return _clause("error", condition, checker)
+    condition, checker, predicate_name, predicate_module, allow_none_success = (
+        _normalize_boolean_clause(cast(ExceptionMatcher, matcher_or_exceptions))
+    )
+    return _clause(
+        "error",
+        condition,
+        checker,
+        predicate_name=predicate_name,
+        predicate_module=predicate_module,
+        allow_none_success=allow_none_success,
+    )
 
 
 def raises(*exceptions: Type[Exception]) -> _ClauseSpec:
@@ -89,15 +258,21 @@ def raises(*exceptions: Type[Exception]) -> _ClauseSpec:
 
     normalized = _normalize_exceptions(exceptions)
     condition = " or ".join(exception.__name__ for exception in normalized)
-    return _clause("error", condition, _exception_matcher(normalized))
+    return _clause(
+        "error",
+        condition,
+        _exception_matcher(normalized),
+        predicate_name=condition,
+        predicate_module=None,
+    )
 
 
 def pure() -> _ClauseSpec:
-    return _clause("purity", "pure", None)
+    return _clause("purity", "pure", None, predicate_name="pure", predicate_module=None)
 
 
 def panic_free() -> _ClauseSpec:
-    return _clause("panic", "panic_free", None)
+    return _clause("panic", "panic_free", None, predicate_name="panic_free", predicate_module=None)
 
 
 def contract(*clauses: _ClauseSpec) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
@@ -127,10 +302,11 @@ def contract(*clauses: _ClauseSpec) -> Callable[[Callable[..., Any]], Callable[.
                 if not _native.contracts_enabled():
                     return function(*args, **kwargs)
 
+                active_invariants = _active_invariants(function, invariants)
                 context, inputs = _prepare_call(signature, args, kwargs)
                 _check_entry_contracts(
                     preconditions=preconditions,
-                    invariants=invariants,
+                    invariants=active_invariants,
                     function_path=function_path,
                     location=location,
                     inputs=inputs,
@@ -140,7 +316,7 @@ def contract(*clauses: _ClauseSpec) -> Callable[[Callable[..., Any]], Callable[.
                 return _ContractAsyncGenerator(
                     generator=generator,
                     postconditions=postconditions,
-                    invariants=invariants,
+                    invariants=active_invariants,
                     error_contracts=error_contracts,
                     panic_contract=panic_contract,
                     function_path=function_path,
@@ -159,10 +335,11 @@ def contract(*clauses: _ClauseSpec) -> Callable[[Callable[..., Any]], Callable[.
                 if not _native.contracts_enabled():
                     return await function(*args, **kwargs)
 
+                active_invariants = _active_invariants(function, invariants)
                 context, inputs = _prepare_call(signature, args, kwargs)
                 _check_entry_contracts(
                     preconditions=preconditions,
-                    invariants=invariants,
+                    invariants=active_invariants,
                     function_path=function_path,
                     location=location,
                     inputs=inputs,
@@ -181,14 +358,14 @@ def contract(*clauses: _ClauseSpec) -> Callable[[Callable[..., Any]], Callable[.
                         location=location,
                         inputs=inputs,
                         context=context,
-                        invariants=invariants,
+                        invariants=active_invariants,
                         exc=exc,
                     )
 
                 wrapped_manager = _maybe_wrap_async_context_manager(
                     result=result,
                     postconditions=postconditions,
-                    invariants=invariants,
+                    invariants=active_invariants,
                     error_contracts=error_contracts,
                     panic_contract=panic_contract,
                     function_path=function_path,
@@ -201,7 +378,7 @@ def contract(*clauses: _ClauseSpec) -> Callable[[Callable[..., Any]], Callable[.
 
                 _check_success_contracts(
                     postconditions=postconditions,
-                    invariants=invariants,
+                    invariants=active_invariants,
                     function_path=function_path,
                     location=location,
                     inputs=inputs,
@@ -218,10 +395,11 @@ def contract(*clauses: _ClauseSpec) -> Callable[[Callable[..., Any]], Callable[.
             if not _native.contracts_enabled():
                 return function(*args, **kwargs)
 
+            active_invariants = _active_invariants(function, invariants)
             context, inputs = _prepare_call(signature, args, kwargs)
             _check_entry_contracts(
                 preconditions=preconditions,
-                invariants=invariants,
+                invariants=active_invariants,
                 function_path=function_path,
                 location=location,
                 inputs=inputs,
@@ -240,14 +418,14 @@ def contract(*clauses: _ClauseSpec) -> Callable[[Callable[..., Any]], Callable[.
                     location=location,
                     inputs=inputs,
                     context=context,
-                    invariants=invariants,
+                    invariants=active_invariants,
                     exc=exc,
                 )
 
             wrapped_manager = _maybe_wrap_async_context_manager(
                 result=result,
                 postconditions=postconditions,
-                invariants=invariants,
+                invariants=active_invariants,
                 error_contracts=error_contracts,
                 panic_contract=panic_contract,
                 function_path=function_path,
@@ -260,7 +438,7 @@ def contract(*clauses: _ClauseSpec) -> Callable[[Callable[..., Any]], Callable[.
 
             _check_success_contracts(
                 postconditions=postconditions,
-                invariants=invariants,
+                invariants=active_invariants,
                 function_path=function_path,
                 location=location,
                 inputs=inputs,
@@ -279,8 +457,12 @@ def invariant_class(
     *clauses: _ClauseSpec,
     include_private: bool = False,
     include_dunder: bool = False,
+    include: Collection[str] | None = None,
+    exclude: Collection[str] | None = None,
 ) -> Callable[[ClassType], ClassType]:
     normalized = tuple(_require_invariant_clause(clause) for clause in clauses)
+    included_names = None if include is None else frozenset(include)
+    excluded_names = frozenset(exclude or ())
 
     def decorator(cls: ClassType) -> ClassType:
         for name, attribute in vars(cls).items():
@@ -290,6 +472,8 @@ def invariant_class(
                 invariants=normalized,
                 include_private=include_private,
                 include_dunder=include_dunder,
+                include=included_names,
+                exclude=excluded_names,
             )
             if wrapped is not None:
                 setattr(cls, name, wrapped)
@@ -350,18 +534,29 @@ def location_to_dict(location: Optional[_native.ContractLocation]) -> Optional[D
     }
 
 
-def violation_to_dict(violation: _native.ContractViolation) -> Dict[str, Any]:
-    return {
-        "function": violation.function,
-        "kind": violation.kind,
-        "condition": violation.condition,
-        "details": violation.details,
-        "location": location_to_dict(violation.location),
-        "inputs": [input_snapshot_to_dict(snapshot) for snapshot in violation.inputs],
+def violation_to_dict(
+    violation: Union[_native.ContractViolation, ContractViolationError],
+) -> Dict[str, Any]:
+    normalized = _normalize_violation(violation)
+    detail = _resolve_violation_detail(
+        normalized,
+        violation.detail if isinstance(violation, ContractViolationError) else None,
+    )
+    payload = {
+        "function": normalized.function,
+        "kind": normalized.kind,
+        "condition": normalized.condition,
+        "details": normalized.details,
+        "location": location_to_dict(normalized.location),
+        "inputs": [input_snapshot_to_dict(snapshot) for snapshot in normalized.inputs],
     }
+    payload.update(violation_detail_to_dict(detail))
+    return payload
 
 
-def violation_to_json(violation: _native.ContractViolation) -> str:
+def violation_to_json(
+    violation: Union[_native.ContractViolation, ContractViolationError],
+) -> str:
     return json.dumps(violation_to_dict(violation), ensure_ascii=False, sort_keys=True)
 
 
@@ -369,16 +564,33 @@ def violation_to_sarif_result(
     violation: Union[_native.ContractViolation, ContractViolationError],
 ) -> Dict[str, Any]:
     normalized = _normalize_violation(violation)
+    detail = _resolve_violation_detail(
+        normalized,
+        violation.detail if isinstance(violation, ContractViolationError) else None,
+    )
+    detail_payload = violation_detail_to_dict(detail)
     result: Dict[str, Any] = {
         "ruleId": _sarif_rule_id(normalized),
-        "level": "error",
+        "level": _sarif_level(detail.severity),
         "message": {
-            "text": normalized.condition,
+            "text": detail.message or normalized.details or normalized.condition,
         },
         "properties": {
             "contractKind": normalized.kind,
             "condition": normalized.condition,
             "details": normalized.details,
+            "code": detail_payload["code"],
+            "fieldPath": detail_payload["field_path"],
+            "actual": detail_payload["actual"],
+            "expected": detail_payload["expected"],
+            "contractPhase": detail_payload["contract_phase"],
+            "predicateName": detail_payload["predicate_name"],
+            "predicateModule": detail_payload["predicate_module"],
+            "subjectId": detail_payload["subject_id"],
+            "subjectType": detail_payload["subject_type"],
+            "severity": detail_payload["severity"],
+            "hint": detail_payload["hint"],
+            "causes": detail_payload["causes"],
         },
     }
 
@@ -439,10 +651,26 @@ def violations_to_sarif_json(
 def _clause(
     kind: str,
     condition: str,
-    checker: Optional[Callable[..., bool]],
+    checker: Optional[Callable[..., Any]],
+    *,
+    predicate_name: str | None = None,
+    predicate_module: str | None = None,
+    allow_none_success: bool = False,
+    policy: str = "always",
+    cost: str = "cheap",
 ) -> _ClauseSpec:
     native = _native.ContractClause(kind, condition)
-    return _ClauseSpec(kind=kind, condition=condition, checker=checker, native=native)
+    return _ClauseSpec(
+        kind=kind,
+        condition=condition,
+        checker=checker,
+        native=native,
+        predicate_name=predicate_name,
+        predicate_module=predicate_module,
+        allow_none_success=allow_none_success,
+        policy=policy,
+        cost=cost,
+    )
 
 
 def _require_clause(clause: _ClauseSpec) -> _ClauseSpec:
@@ -461,19 +689,44 @@ def _require_invariant_clause(clause: _ClauseSpec) -> _ClauseSpec:
 
 
 def _normalize_boolean_clause(
-    predicate: Callable[..., bool],
-) -> Tuple[str, Callable[..., bool]]:
+    predicate: Callable[..., Any],
+) -> Tuple[str, Callable[..., Any], str, str | None, bool]:
     if callable(predicate) and not _is_exception_spec(predicate):
-        return _callable_label(predicate), predicate
+        return (
+            _callable_label(predicate),
+            predicate,
+            _callable_label(predicate),
+            _callable_module(predicate),
+            _predicate_allows_none_success(predicate),
+        )
 
     raise TypeError("callable を渡してください")
 
 
-def _callable_label(predicate: Callable[..., bool]) -> str:
+def _callable_label(predicate: Callable[..., Any]) -> str:
     name = getattr(predicate, "__name__", predicate.__class__.__name__)
     if name == "<lambda>":
         return "<lambda>"
     return name
+
+
+def _callable_module(predicate: Callable[..., Any]) -> str | None:
+    module = getattr(predicate, "__module__", None)
+    return module if isinstance(module, str) else None
+
+
+def _normalize_invariant_policy(policy: str) -> str:
+    if policy not in _ALLOWED_INVARIANT_POLICIES:
+        raise ValueError(
+            "invariant() の policy は always / mutating_only / read_only_opt_out / debug_only のいずれかです"
+        )
+    return policy
+
+
+def _normalize_invariant_cost(cost: str) -> str:
+    if cost not in _ALLOWED_INVARIANT_COSTS:
+        raise ValueError("invariant() の cost は cheap / expensive のいずれかです")
+    return cost
 
 
 def _function_location(function: Callable[..., Any]) -> _native.ContractLocation:
@@ -724,14 +977,15 @@ def _handle_invocation_exception(
         available=context,
     )
 
-    if _matches_error_contract(
+    matched, detail = _matches_error_contract(
         clauses=error_contracts,
         function_path=function_path,
         location=location,
         inputs=inputs,
         context=context,
         exc=exc,
-    ):
+    )
+    if matched:
         raise exc
 
     if error_contracts:
@@ -742,6 +996,15 @@ def _handle_invocation_exception(
             location=location,
             inputs=inputs,
             details=_exception_details(exc),
+            detail=detail
+            or ViolationDetail(
+                code="contract.error.unexpected_exception",
+                message="宣言されていない例外が送出されました",
+                actual={"type": type(exc).__name__, "message": str(exc)},
+                expected=[clause.condition for clause in error_contracts],
+                severity="error",
+                hint="raises(...) または error(...) の宣言を見直してください",
+            ),
         ) from exc
 
     if panic_contract is not None:
@@ -752,6 +1015,12 @@ def _handle_invocation_exception(
             location=location,
             inputs=inputs,
             details=_exception_details(exc),
+            detail=ViolationDetail(
+                code="contract.panic.unexpected_exception",
+                message="想定外例外が panic 契約により契約違反へ変換されました",
+                actual={"type": type(exc).__name__, "message": str(exc)},
+                severity="error",
+            ),
         ) from exc
 
     raise exc
@@ -821,6 +1090,8 @@ def _wrap_class_attribute(
     invariants: Sequence[_ClauseSpec],
     include_private: bool,
     include_dunder: bool,
+    include: Collection[str] | None,
+    exclude: Collection[str],
 ) -> Optional[Callable[..., Any]]:
     if isinstance(attribute, (staticmethod, classmethod, property)):
         return None
@@ -829,7 +1100,11 @@ def _wrap_class_attribute(
         return None
 
     if not _should_wrap_method_name(
-        name, include_private=include_private, include_dunder=include_dunder
+        name,
+        include_private=include_private,
+        include_dunder=include_dunder,
+        include=include,
+        exclude=exclude,
     ):
         return None
 
@@ -839,9 +1114,21 @@ def _wrap_class_attribute(
     return _wrap_method_with_invariants(attribute, invariants)
 
 
-def _should_wrap_method_name(name: str, include_private: bool, include_dunder: bool) -> bool:
+def _should_wrap_method_name(
+    name: str,
+    include_private: bool,
+    include_dunder: bool,
+    include: Collection[str] | None,
+    exclude: Collection[str],
+) -> bool:
+    if name in exclude:
+        return False
+
     if name == "__init__":
         return True
+
+    if include is not None and name not in include:
+        return False
 
     if name.startswith("__") and name.endswith("__"):
         return include_dunder
@@ -881,11 +1168,12 @@ def _wrap_method_with_invariants(
             if not _native.contracts_enabled():
                 return function(*args, **kwargs)
 
+            active_invariants = _active_invariants(function, invariants)
             context, inputs = _prepare_call(signature, args, kwargs)
 
             if not skip_pre:
                 _check_boolean_clauses(
-                    clauses=invariants,
+                    clauses=active_invariants,
                     function_path=function_path,
                     location=location,
                     inputs=inputs,
@@ -896,7 +1184,7 @@ def _wrap_method_with_invariants(
             return _ContractAsyncGenerator(
                 generator=generator,
                 postconditions=[],
-                invariants=invariants,
+                invariants=active_invariants,
                 error_contracts=[],
                 panic_contract=None,
                 function_path=function_path,
@@ -915,11 +1203,12 @@ def _wrap_method_with_invariants(
             if not _native.contracts_enabled():
                 return await function(*args, **kwargs)
 
+            active_invariants = _active_invariants(function, invariants)
             context, inputs = _prepare_call(signature, args, kwargs)
 
             if not skip_pre:
                 _check_boolean_clauses(
-                    clauses=invariants,
+                    clauses=active_invariants,
                     function_path=function_path,
                     location=location,
                     inputs=inputs,
@@ -935,7 +1224,7 @@ def _wrap_method_with_invariants(
                     raise
 
                 _check_boolean_clauses(
-                    clauses=invariants,
+                    clauses=active_invariants,
                     function_path=function_path,
                     location=location,
                     inputs=inputs,
@@ -944,7 +1233,7 @@ def _wrap_method_with_invariants(
                 raise
 
             _check_boolean_clauses(
-                clauses=invariants,
+                clauses=active_invariants,
                 function_path=function_path,
                 location=location,
                 inputs=inputs,
@@ -953,7 +1242,7 @@ def _wrap_method_with_invariants(
             return _maybe_wrap_async_context_manager(
                 result=result,
                 postconditions=[],
-                invariants=invariants,
+                invariants=active_invariants,
                 error_contracts=[],
                 panic_contract=None,
                 function_path=function_path,
@@ -970,11 +1259,12 @@ def _wrap_method_with_invariants(
         if not _native.contracts_enabled():
             return function(*args, **kwargs)
 
+        active_invariants = _active_invariants(function, invariants)
         context, inputs = _prepare_call(signature, args, kwargs)
 
         if not skip_pre:
             _check_boolean_clauses(
-                clauses=invariants,
+                clauses=active_invariants,
                 function_path=function_path,
                 location=location,
                 inputs=inputs,
@@ -990,7 +1280,7 @@ def _wrap_method_with_invariants(
                 raise
 
             _check_boolean_clauses(
-                clauses=invariants,
+                clauses=active_invariants,
                 function_path=function_path,
                 location=location,
                 inputs=inputs,
@@ -999,7 +1289,7 @@ def _wrap_method_with_invariants(
             raise
 
         _check_boolean_clauses(
-            clauses=invariants,
+            clauses=active_invariants,
             function_path=function_path,
             location=location,
             inputs=inputs,
@@ -1008,7 +1298,7 @@ def _wrap_method_with_invariants(
         return _maybe_wrap_async_context_manager(
             result=result,
             postconditions=[],
-            invariants=invariants,
+            invariants=active_invariants,
             error_contracts=[],
             panic_contract=None,
             function_path=function_path,
@@ -1046,6 +1336,33 @@ def _summarize_value(value: Any) -> str:
     return rendered
 
 
+def _resolve_clause_result(clause: _ClauseSpec, result: Any) -> _PredicateOutcome:
+    if isinstance(result, ViolationDetail):
+        return _PredicateOutcome(matched=False, detail=result)
+
+    if (
+        isinstance(result, tuple)
+        and result
+        and all(isinstance(item, ViolationCause) for item in result)
+    ):
+        return _PredicateOutcome(
+            matched=False,
+            detail=ViolationDetail(causes=cast(Tuple[ViolationCause, ...], result)),
+        )
+
+    if (
+        isinstance(result, list)
+        and result
+        and all(isinstance(item, ViolationCause) for item in result)
+    ):
+        return _PredicateOutcome(matched=False, detail=ViolationDetail(causes=tuple(result)))
+
+    if result is None:
+        return _PredicateOutcome(matched=clause.allow_none_success)
+
+    return _PredicateOutcome(matched=bool(result))
+
+
 def _check_boolean_clauses(
     clauses: Sequence[_ClauseSpec],
     function_path: str,
@@ -1056,7 +1373,7 @@ def _check_boolean_clauses(
     for clause in clauses:
         assert clause.checker is not None
         try:
-            matched = bool(_invoke(clause.checker, available))
+            outcome = _resolve_clause_result(clause, _invoke(clause.checker, available))
         except ContractViolationError:
             raise
         except Exception as exc:
@@ -1067,15 +1384,18 @@ def _check_boolean_clauses(
                 location=location,
                 inputs=inputs,
                 details=f"predicate raised {type(exc).__name__}: {exc}",
+                clause=clause,
             ) from exc
 
-        if not matched:
+        if not outcome.matched:
             raise _build_violation_error(
                 function_path=function_path,
                 kind=clause.kind,
                 condition=clause.condition,
                 location=location,
                 inputs=inputs,
+                clause=clause,
+                detail=outcome.detail,
             )
 
 
@@ -1086,19 +1406,23 @@ def _matches_error_contract(
     inputs: Sequence[_native.InputSnapshot],
     context: Mapping[str, Any],
     exc: Exception,
-) -> bool:
+) -> Tuple[bool, ViolationDetail | None]:
     if not clauses:
-        return False
+        return False, None
 
     available = dict(context)
     available["exc"] = exc
     available["error"] = exc
+    first_detail: ViolationDetail | None = None
 
     for clause in clauses:
         assert clause.checker is not None
         try:
-            if bool(_invoke(clause.checker, available)):
-                return True
+            outcome = _resolve_clause_result(clause, _invoke(clause.checker, available))
+            if outcome.matched:
+                return True, None
+            if first_detail is None and outcome.detail is not None:
+                first_detail = outcome.detail
         except Exception as inner_exc:
             raise _build_violation_error(
                 function_path=function_path,
@@ -1107,9 +1431,10 @@ def _matches_error_contract(
                 location=location,
                 inputs=inputs,
                 details=f"predicate raised {type(inner_exc).__name__}: {inner_exc}",
+                clause=clause,
             ) from inner_exc
 
-    return False
+    return False, first_detail
 
 
 def _post_context(context: Mapping[str, Any], result: Any) -> Dict[str, Any]:
@@ -1159,16 +1484,25 @@ def _build_violation_error(
     location: _native.ContractLocation,
     inputs: Sequence[_native.InputSnapshot],
     details: Optional[str] = None,
+    clause: _ClauseSpec | None = None,
+    detail: ViolationDetail | None = None,
 ) -> ContractViolationError:
+    normalized_detail = _compose_violation_detail(
+        kind=kind,
+        condition=condition,
+        clause=clause,
+        detail=detail,
+        details=details,
+    )
     violation = _native.ContractViolation(
         function_path,
         kind,
         condition,
         location,
         list(inputs),
-        details,
+        details or normalized_detail.message,
     )
-    return ContractViolationError(violation)
+    return ContractViolationError(violation, detail=normalized_detail)
 
 
 def _normalize_violation(
@@ -1183,6 +1517,14 @@ def _sarif_rule_id(violation: _native.ContractViolation) -> str:
     return f"contract/{violation.kind}"
 
 
+def _sarif_level(severity: str | None) -> str:
+    if severity == "warning":
+        return "warning"
+    if severity == "info":
+        return "note"
+    return "error"
+
+
 def _unique_violations_by_rule(
     violations: Sequence[_native.ContractViolation],
 ) -> Sequence[_native.ContractViolation]:
@@ -1194,6 +1536,258 @@ def _unique_violations_by_rule(
 
 def _exception_details(exc: Exception) -> str:
     return f"{type(exc).__name__}: {exc}"
+
+
+def _compose_violation_detail(
+    *,
+    kind: str,
+    condition: str,
+    clause: _ClauseSpec | None,
+    detail: ViolationDetail | None,
+    details: str | None,
+) -> ViolationDetail:
+    base = detail or ViolationDetail()
+    phase = base.contract_phase or _contract_phase(kind)
+    message = base.message or details or _default_violation_message(phase, condition, clause)
+    return replace(
+        base,
+        code=base.code or _default_violation_code(phase),
+        message=message,
+        contract_phase=phase,
+        predicate_name=base.predicate_name
+        or (clause.predicate_name if clause is not None else None),
+        predicate_module=base.predicate_module
+        or (clause.predicate_module if clause is not None else None),
+        severity=base.severity or "error",
+    )
+
+
+def _contract_phase(kind: str) -> str:
+    mapping = {
+        "precondition": "pre",
+        "postcondition": "post",
+        "invariant": "invariant",
+        "error": "error",
+        "panic": "panic",
+    }
+    return mapping.get(kind, kind)
+
+
+def _default_violation_code(phase: str) -> str:
+    return f"contract.{phase}.failed"
+
+
+def _default_violation_message(
+    phase: str,
+    condition: str,
+    clause: _ClauseSpec | None,
+) -> str:
+    phase_label = {
+        "pre": "前提条件",
+        "post": "事後条件",
+        "invariant": "不変条件",
+        "error": "例外契約",
+        "panic": "panic 契約",
+    }.get(phase, "契約")
+    predicate_name = clause.predicate_name if clause is not None else condition
+    return f"{phase_label} '{predicate_name}' が失敗しました"
+
+
+def _attach_violation_detail(
+    violation: _native.ContractViolation,
+    detail: ViolationDetail,
+) -> None:
+    _VIOLATION_DETAILS_BY_ID[id(violation)] = detail
+    try:
+        setattr(violation, _VIOLATION_DETAIL_ATTRIBUTE, violation_detail_to_dict(detail))
+    except AttributeError:
+        return
+
+
+def _resolve_violation_detail(
+    violation: _native.ContractViolation,
+    detail: ViolationDetail | None = None,
+) -> ViolationDetail:
+    if detail is not None:
+        return detail
+
+    cached = _VIOLATION_DETAILS_BY_ID.get(id(violation))
+    if cached is not None:
+        return cached
+
+    payload = getattr(violation, _VIOLATION_DETAIL_ATTRIBUTE, None)
+    if isinstance(payload, Mapping):
+        return _detail_from_payload(payload)
+
+    return _compose_violation_detail(
+        kind=violation.kind,
+        condition=violation.condition,
+        clause=None,
+        detail=ViolationDetail(message=violation.details),
+        details=violation.details,
+    )
+
+
+def _detail_from_payload(payload: Mapping[str, Any]) -> ViolationDetail:
+    causes_payload = payload.get("causes")
+    causes: Tuple[ViolationCause, ...] = ()
+    if isinstance(causes_payload, Sequence) and not isinstance(
+        causes_payload, (str, bytes, bytearray)
+    ):
+        normalized_causes = []
+        for item in causes_payload:
+            if isinstance(item, Mapping):
+                normalized_causes.append(
+                    ViolationCause(
+                        code=_optional_str(item.get("code")),
+                        message=_optional_str(item.get("message")),
+                        field_path=_optional_str(item.get("field_path")),
+                        actual=item.get("actual"),
+                        expected=item.get("expected"),
+                        subject_id=_optional_str(item.get("subject_id")),
+                        subject_type=_optional_str(item.get("subject_type")),
+                        severity=_optional_str(item.get("severity")),
+                        hint=_optional_str(item.get("hint")),
+                    )
+                )
+        causes = tuple(normalized_causes)
+
+    return ViolationDetail(
+        code=_optional_str(payload.get("code")),
+        message=_optional_str(payload.get("message")),
+        field_path=_optional_str(payload.get("field_path")),
+        actual=payload.get("actual"),
+        expected=payload.get("expected"),
+        subject_id=_optional_str(payload.get("subject_id")),
+        subject_type=_optional_str(payload.get("subject_type")),
+        contract_phase=_optional_str(payload.get("contract_phase")),
+        predicate_name=_optional_str(payload.get("predicate_name")),
+        predicate_module=_optional_str(payload.get("predicate_module")),
+        severity=_optional_str(payload.get("severity")),
+        hint=_optional_str(payload.get("hint")),
+        causes=causes,
+    )
+
+
+def _optional_str(value: Any) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def _predicate_allows_none_success(predicate: Callable[..., Any]) -> bool:
+    raw_annotation = inspect.signature(predicate).return_annotation
+    try:
+        return_annotation = get_type_hints(predicate).get("return")
+    except Exception:
+        return _annotation_allows_none(raw_annotation)
+
+    if return_annotation is None:
+        return True
+
+    return _annotation_allows_none(return_annotation)
+
+
+def _annotation_allows_none(annotation: Any) -> bool:
+    if annotation is inspect.Signature.empty:
+        return False
+
+    if isinstance(annotation, str):
+        normalized = annotation.replace(" ", "")
+        return (
+            normalized in {"None", "NoneType"}
+            or "|None" in normalized
+            or "None|" in normalized
+            or normalized.startswith("Optional[")
+            or normalized.endswith(",None]")
+        )
+
+    if annotation is type(None):
+        return True
+
+    origin = get_origin(annotation)
+    union_type = getattr(types, "UnionType", None)
+    if origin is Union or (union_type is not None and origin is union_type):
+        return any(_annotation_allows_none(argument) for argument in get_args(annotation))
+
+    return False
+
+
+def _env_flag(name: str, *, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+
+    normalized = value.strip()
+    lowered = normalized.lower()
+    return normalized != "0" and lowered != "false" and lowered != "off"
+
+
+def _active_invariants(
+    function: Callable[..., Any],
+    invariants: Sequence[_ClauseSpec],
+) -> Sequence[_ClauseSpec]:
+    settings = get_contract_runtime_settings()
+    role = _method_role(function)
+    return [
+        clause
+        for clause in invariants
+        if _invariant_should_run(clause, role=role, settings=settings)
+    ]
+
+
+def _method_role(function: Callable[..., Any]) -> str:
+    explicit = getattr(function, _METHOD_ROLE_ATTRIBUTE, None)
+    if explicit in {"mutating", "read_only"}:
+        return cast(str, explicit)
+
+    name = getattr(function, "__name__", "")
+    if name == "__init__":
+        return "mutating"
+
+    if name.startswith(_READ_ONLY_PREFIXES):
+        return "read_only"
+
+    if name.startswith(
+        (
+            "set_",
+            "add_",
+            "update_",
+            "remove_",
+            "delete_",
+            "create_",
+            "write_",
+            "save_",
+            "debit",
+            "credit",
+            "spend",
+        )
+    ):
+        return "mutating"
+
+    return "unspecified"
+
+
+def _invariant_should_run(
+    clause: _ClauseSpec,
+    *,
+    role: str,
+    settings: ContractRuntimeSettings,
+) -> bool:
+    if clause.cost == "expensive" and not settings.expensive_invariants:
+        return False
+
+    if clause.policy == "always":
+        return True
+
+    if clause.policy == "mutating_only":
+        return role == "mutating"
+
+    if clause.policy == "read_only_opt_out":
+        return role != "read_only"
+
+    if clause.policy == "debug_only":
+        return settings.debug_invariants
+
+    return True
 
 
 def _is_exception_spec(value: object) -> bool:

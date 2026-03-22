@@ -24,10 +24,13 @@ PyPI wheel 配布対象:
 `macOS` wheel は `universal2` を使い、Apple Silicon と Intel の両方を対象にします。
 
 ```python
+from __future__ import annotations
+
 import asyncio
 
-from python_contracts_rs import (
+from contract_check import (
     ContractViolationError,
+    ViolationDetail,
     contract,
     invariant,
     invariant_class,
@@ -35,6 +38,7 @@ from python_contracts_rs import (
     pre,
     pure,
     raises,
+    read_only,
 )
 
 
@@ -46,8 +50,16 @@ def quotient_matches_dividend(result: int, dividend: int, divisor: int) -> bool:
     return result * divisor == dividend
 
 
-def value_is_positive(value: int) -> bool:
-    return value > 0
+def value_is_positive(value: int) -> ViolationDetail | None:
+    if value > 0:
+        return None
+    return ViolationDetail(
+        code="value.non_positive",
+        message="value must be positive",
+        field_path="/value",
+        actual=value,
+        expected="value > 0",
+    )
 
 
 def result_is_incremented(result: int, value: int) -> bool:
@@ -80,7 +92,7 @@ async def async_increment(value: int) -> int:
 
 
 @invariant_class(
-    invariant(balance_is_non_negative),
+    invariant(balance_is_non_negative, policy="mutating_only"),
 )
 class Wallet:
     def __init__(self, balance: int) -> None:
@@ -88,6 +100,10 @@ class Wallet:
 
     def debit(self, amount: int) -> None:
         self.balance -= amount
+
+    @read_only
+    def current_balance(self) -> int:
+        return self.balance
 
 
 assert divide(12, 3) == 4
@@ -97,13 +113,16 @@ assert asyncio.run(async_increment(2)) == 3
 配布名と import 名:
 
 - PyPI distribution 名は `contract-check` です
-- Python import 名は現時点では `python_contracts_rs` です
+- 公式 Python import 名は `contract_check` です
+- 既存の `python_contracts_rs` も後方互換 alias として継続サポートします
+- `python_contracts_rs` を削除する場合は `1.x` より前に silent break しません
 
 標準挙動:
 
 - 契約は sync / async 関数の両方で有効です
 - `PYTHON_CONTRACTS_RS=0` で実行時に無効化できます
-- 契約違反は `ContractViolationError` として送出され、`to_dict()` / `to_json()` で構造化出力できます
+- 契約違反は `ContractViolationError` として送出され、`code` / `message` / `field_path` / `actual` / `expected` / `contract_phase` / `predicate_name` を含む構造化出力を返せます
+- predicate は `bool` だけでなく `ViolationDetail | None` も返せます
 - `pre(...)` / `post(...)` / `invariant(...)` / `error(...)` は callable を受け取り、手書きの条件文字列は受け取りません
 - `condition` には callable 名または例外型名のような導出ラベルが入ります
 
@@ -113,26 +132,39 @@ assert asyncio.run(async_increment(2)) == 3
 | --- | --- | --- |
 | 前提条件 | `pre(...)` | sync / async / async generator の実行前に検証 |
 | 事後条件 | `post(...)` | 戻り値は `result` / `ret` で参照 |
-| 不変条件 | `invariant(...)` / `@invariant_class(...)` | method 単位または class 全体へ注入 |
+| 不変条件 | `invariant(...)` / `@invariant_class(...)` | `policy=` / `cost=` と `@read_only` / `@mutating` で粒度制御 |
 | 期待例外 | `raises(...)` / `error(...)` | 許可された例外のみ通過 |
 | 純粋性 | `pure(...)` | 現段階では意図表明 |
 | panic 方針 | `panic_free(...)` | 予期しない例外を契約違反へ変換 |
+| rich violation | `ViolationDetail` | API 応答やログへ流しやすい詳細 payload |
+| typed predicates | `PrePredicate` / `PostPredicate` / `InvariantPredicate` / `ErrorPredicate` | `Protocol` と mypy / pyright を前提にした型支援 |
+| テスト支援 | `collect_violations(...)` / `assert_valid(...)` / `validate_payload(...)` | decorator を通さず predicate を直接検証 |
+| runtime 制御 | `contract_runtime(...)` | `debug_only` / `expensive` invariant の有効化を文脈単位で切替 |
 | 契約メタデータ | `get_contract_metadata(...)` | ドキュメント生成やテスト補助向け |
 | 構造化出力 | `violation_to_dict(...)` / `violation_to_json(...)` | CI や監査ログ向け |
 | SARIF 出力 | `violation_to_sarif_result(...)` / `violations_to_sarif(...)` | GitHub code scanning 連携向け |
 
-詳細は [docs/contracts.md](https://github.com/sotanengel/py-contract-check/blob/main/docs/contracts.md) を参照してください。
+詳細ガイド:
+
+- [docs/contracts.md](https://github.com/sotanengel/py-contract-check/blob/main/docs/contracts.md)
+- [docs/typed-predicates.md](https://github.com/sotanengel/py-contract-check/blob/main/docs/typed-predicates.md)
+- [docs/invariant-policies.md](https://github.com/sotanengel/py-contract-check/blob/main/docs/invariant-policies.md)
+- [docs/testing.md](https://github.com/sotanengel/py-contract-check/blob/main/docs/testing.md)
 
 ## リポジトリ構成
 
 - `python/python_contracts_rs/`
   Python 公開 API と decorator 実装です。
+- `python/contract_check/`
+  公式 import alias です。既存の `python_contracts_rs` を再エクスポートします。
 - `bindings/python-contracts-rs/`
   PyO3 ベースの Python/Rust バインディングです。
 - `crates/rust-contract-checks/`
   Rust 側の低レベルな契約種別・違反情報・設定判定です。
 - `examples/quickstart.py`
   Python 利用者向けの最短例です。
+- `examples/typed_predicates.py`
+  typed predicate と `Protocol` を含む型支援サンプルです。
 - `tests/python/test_contracts.py`
   Python 公開 API の統合テストです。
 - `tests/contracts.rs`

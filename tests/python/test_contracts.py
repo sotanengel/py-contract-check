@@ -363,9 +363,12 @@ def test_violation_serializers_return_json_safe_payload() -> None:
     payload = exc_info.value.to_dict()
     assert payload["kind"] == "precondition"
     assert payload["inputs"][0]["name"] == "value"
-    assert "message" not in payload
+    assert payload["message"] == "前提条件 'is_even' が失敗しました"
+    assert payload["code"] == "contract.pre.failed"
+    assert payload["contract_phase"] == "pre"
     assert '"kind": "precondition"' in exc_info.value.to_json()
     assert violation_to_dict(exc_info.value.violation)["condition"] == "is_even"
+    assert violation_to_dict(exc_info.value.violation)["code"] == "contract.pre.failed"
     assert violation_to_json(exc_info.value.violation).startswith("{")
 
 

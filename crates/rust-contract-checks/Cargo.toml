@@ -16,7 +16,7 @@ macros = ["dep:rust-contract-checks-macros"]
 always-contracts = []
 
 [dependencies]
-rust-contract-checks-macros = { version = "0.3.2", path = "../rust-contract-checks-macros", optional = true }
+rust-contract-checks-macros = { version = "0.4.0", path = "../rust-contract-checks-macros", optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
