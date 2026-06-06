@@ -20,15 +20,15 @@ jobs:
           - os: windows-latest
             artifact_name: python-wheel-windows
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.11"
       - uses: dtolnay/rust-toolchain@stable
       - name: Install macOS universal2 target
         if: matrix.os == 'macos-14'
         run: rustup target add x86_64-apple-darwin
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       - name: Install maturin
         run: python -m pip install --upgrade pip maturin
       - name: Build Python distributions
@@ -41,7 +41,7 @@ jobs:
             maturin build --release --manifest-path bindings/python-contracts-rs/Cargo.toml --out dist
           fi
       - name: Upload Python wheel
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ matrix.artifact_name }}
           path: dist/*.whl
@@ -50,7 +50,7 @@ jobs:
     needs: package-python
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: dtolnay/rust-toolchain@stable
       - name: Publish to crates.io
         env:
@@ -73,12 +73,12 @@ jobs:
     env:
       PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.11"
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       - name: Install maturin
         run: python -m pip install --upgrade pip maturin
       - name: Build Python sdist
@@ -86,17 +86,17 @@ jobs:
           mkdir -p dist
           maturin sdist --manifest-path bindings/python-contracts-rs/Cargo.toml --out dist
       - name: Download Linux wheel
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: python-wheel-linux
           path: dist
       - name: Download macOS wheel
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: python-wheel-macos
           path: dist
       - name: Download Windows wheel
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: python-wheel-windows
           path: dist
@@ -135,12 +135,12 @@ jobs:
       contents: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.11"
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       - name: Install maturin
         run: python -m pip install --upgrade pip maturin
       - name: Build Python sdist
@@ -148,22 +148,22 @@ jobs:
           mkdir -p dist
           maturin sdist --manifest-path bindings/python-contracts-rs/Cargo.toml --out dist
       - name: Download Linux wheel
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: python-wheel-linux
           path: dist
       - name: Download macOS wheel
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: python-wheel-macos
           path: dist
       - name: Download Windows wheel
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: python-wheel-windows
           path: dist
       - name: Generate GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           generate_release_notes: true
           files: dist/*
