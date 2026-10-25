@@ -43,7 +43,8 @@ jobs:
           "${{ matrix.venv_python }}" -m ruff check python tests/python
       - name: Typecheck
         shell: bash
-        run: "${{ matrix.venv_python }}" -m mypy python examples/typed_predicates.py
+        run: |
+          "${{ matrix.venv_python }}" -m mypy python examples/typed_predicates.py
       - name: Test
         shell: bash
         run: |
