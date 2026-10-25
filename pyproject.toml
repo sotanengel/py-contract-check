@@ -40,6 +40,7 @@ dev = [
 manifest-path = "bindings/python-contracts-rs/Cargo.toml"
 python-source = "python"
 module-name = "python_contracts_rs._native"
+python-packages = ["contract_check"]
 features = ["extension-module"]
 include = [{ path = "LICENSE", format = "sdist" }]
 
